@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       ],
     },
     orderBy: [{ reviewCount: "desc" }, { title: "asc" }],
-    take: 8,
+    take: 3,
     select: {
       id: true,
       title: true,
