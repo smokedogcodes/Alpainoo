@@ -119,6 +119,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user }) {
+      const isEdge = process.env.NEXT_RUNTIME === "edge";
+
+      // Prisma cannot run in Edge middleware — keep role already embedded in the JWT there.
+      if (isEdge) {
+        // #region agent log
+        fetch("http://127.0.0.1:7376/ingest/6e190034-3568-4fc1-85eb-6c282aded999", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "b3f0a8",
+          },
+          body: JSON.stringify({
+            sessionId: "b3f0a8",
+            timestamp: Date.now(),
+            runId: "post-fix",
+            hypothesisId: "A",
+            location: "auth.ts:jwt",
+            message: "JWT edge path — skip Prisma",
+            data: {
+              hasSub: Boolean(token.sub),
+              role: (token as { role?: string }).role || null,
+            },
+          }),
+        }).catch(() => {});
+        // #endregion
+        return token;
+      }
+
       if (user?.id) {
         await ensureAdminRole(user.id, user.email);
         token.sub = user.id;
@@ -133,13 +161,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      // Re-read role from DB so demotions/promotions take effect without waiting for JWT expiry
+      // Re-read role from DB on Node so demotions/promotions take effect
       if (token.sub) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
           select: { role: true },
         });
-        token.role = dbUser?.role || "CUSTOMER";
+        (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+        // #region agent log
+        fetch("http://127.0.0.1:7376/ingest/6e190034-3568-4fc1-85eb-6c282aded999", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "b3f0a8",
+          },
+          body: JSON.stringify({
+            sessionId: "b3f0a8",
+            timestamp: Date.now(),
+            runId: "post-fix",
+            hypothesisId: "A",
+            location: "auth.ts:jwt",
+            message: "JWT Node role refresh ok",
+            data: {
+              hasSub: true,
+              role: dbUser?.role || "CUSTOMER",
+              prismaOk: true,
+            },
+          }),
+        }).catch(() => {});
+        // #endregion
       }
 
       return token;
@@ -147,7 +197,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.sub || "";
-        session.user.role = token.role || "CUSTOMER";
+        session.user.role = (token as { role?: string }).role || "CUSTOMER";
         if (token.name) session.user.name = token.name as string;
         if (token.email) session.user.email = token.email as string;
         if (token.picture) session.user.image = token.picture as string;

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import DOMPurify from "isomorphic-dompurify";
 
 export const CheckoutSchema = z.object({
   email: z.string().email().max(254),
@@ -47,19 +46,19 @@ export const VerifyPaymentSchema = z.object({
   razorpaySignature: z.string().min(1),
 });
 
-export function sanitizeBlogHtml(input: string) {
-  return DOMPurify.sanitize(input, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ["script", "iframe", "object", "embed", "form"],
-    FORBID_ATTR: ["onerror", "onload", "onclick", "style"],
-  });
-}
-
 /** Allow only relative /uploads paths or https product placeholders */
 export function sanitizeImageUrl(url: string) {
   const trimmed = url.trim();
   if (!trimmed) return "";
-  if (trimmed.startsWith("/uploads/") || trimmed.startsWith("/products/") || trimmed.startsWith("/blog/") || trimmed.startsWith("/collections/") || trimmed.startsWith("/hero/") || trimmed.startsWith("/plp/") || trimmed.startsWith("/stitch/")) {
+  if (
+    trimmed.startsWith("/uploads/") ||
+    trimmed.startsWith("/products/") ||
+    trimmed.startsWith("/blog/") ||
+    trimmed.startsWith("/collections/") ||
+    trimmed.startsWith("/hero/") ||
+    trimmed.startsWith("/plp/") ||
+    trimmed.startsWith("/stitch/")
+  ) {
     return trimmed;
   }
   try {

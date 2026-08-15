@@ -5,7 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
 import { requireAdmin } from "@/lib/auth/admin";
-import { OrderStatusSchema, sanitizeBlogHtml, sanitizeImageUrl } from "@/lib/validation";
+import { OrderStatusSchema, sanitizeImageUrl } from "@/lib/validation";
+import { sanitizeBlogHtml } from "@/lib/sanitize-html";
 
 const ProductFormSchema = z.object({
   id: z.string().optional(),
