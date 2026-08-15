@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, DM_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { auth } from "@/auth";
 import { AuthProvider } from "@/components/providers/auth-provider";
@@ -38,6 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <AuthProvider session={session}>
           {children}
           <Toaster richColors position="top-center" />
+          <Analytics />
         </AuthProvider>
       </body>
     </html>
