@@ -3,7 +3,11 @@ import { z } from "zod";
 export const CheckoutSchema = z.object({
   email: z.string().email().max(254),
   name: z.string().trim().min(2).max(120),
-  phone: z.string().regex(/^\d{10}$/, "Phone must be 10 digits"),
+  phone: z
+    .string()
+    .transform((v) => v.replace(/\D/g, ""))
+    .transform((v) => (v.length > 10 && v.startsWith("91") ? v.slice(-10) : v))
+    .pipe(z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number")),
   address: z.string().trim().min(5).max(500),
   city: z.string().trim().min(2).max(100),
   state: z.string().trim().min(2).max(100),

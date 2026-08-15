@@ -17,6 +17,12 @@ declare global {
   }
 }
 
+function normalizePhone(raw: string) {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(-10);
+  return digits;
+}
+
 export default function CheckoutPage() {
   const items = useCart((s) => s.items);
   const clear = useCart((s) => s.clear);
@@ -39,47 +45,74 @@ export default function CheckoutPage() {
       toast.error("Cart is empty");
       return;
     }
+
+    const phone = normalizePhone(form.phone);
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      toast.error("Enter a valid 10-digit Indian mobile number");
+      return;
+    }
+    if (!/^\d{6}$/.test(form.pincode.trim())) {
+      toast.error("Pin code must be 6 digits");
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await createCheckoutOrder({
         ...form,
+        phone,
+        pincode: form.pincode.trim(),
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       });
 
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+
       if (result.mock || !result.key) {
-        await confirmMockPayment(result.orderId);
+        const paid = await confirmMockPayment(result.orderId);
+        if (!paid.ok) {
+          toast.error(paid.error);
+          return;
+        }
         clear();
         toast.success("Order placed (demo payment)");
         router.push(`/checkout/success?order=${result.orderNumber}`);
         return;
       }
 
-      const rzp = new window.Razorpay!({
+      if (!window.Razorpay) {
+        toast.error("Payment system is still loading. Please try again.");
+        return;
+      }
+
+      const rzp = new window.Razorpay({
         key: result.key,
         amount: Math.round(result.amount * 100),
         currency: result.currency,
         name: "Elorakart",
         description: result.orderNumber,
         order_id: result.razorpayOrderId,
-        prefill: { email: form.email, name: form.name, contact: form.phone },
+        prefill: { email: form.email, name: form.name, contact: phone },
         handler: async (response: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
           razorpay_signature: string;
         }) => {
-          try {
-            await verifyAndFulfillPayment({
-              orderId: result.orderId,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            });
-            clear();
-            toast.success("Payment successful");
-            router.push(`/checkout/success?order=${result.orderNumber}`);
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Payment verification failed");
+          const verified = await verifyAndFulfillPayment({
+            orderId: result.orderId,
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+          });
+          if (!verified.ok) {
+            toast.error(verified.error);
+            return;
           }
+          clear();
+          toast.success("Payment successful");
+          router.push(`/checkout/success?order=${result.orderNumber}`);
         },
       });
       rzp.open();
@@ -96,29 +129,91 @@ export default function CheckoutPage() {
       <h1 className="font-display text-4xl">Checkout</h1>
       <div className="mt-8 grid gap-10 lg:grid-cols-2">
         <form onSubmit={onSubmit} className="space-y-4">
-          {(
-            [
-              ["email", "Email", "email"],
-              ["name", "Full name", "text"],
-              ["phone", "Phone", "tel"],
-              ["address", "Address", "text"],
-              ["city", "City", "text"],
-              ["state", "State", "text"],
-              ["pincode", "Pin code", "text"],
-            ] as const
-          ).map(([key, label, type]) => (
-            <div key={key}>
-              <Label htmlFor={key}>{label}</Label>
-              <Input
-                id={key}
-                type={type}
-                required
-                className="mt-1.5"
-                value={form[key]}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-              />
-            </div>
-          ))}
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              className="mt-1.5"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="name">Full name</Label>
+            <Input
+              id="name"
+              type="text"
+              required
+              className="mt-1.5"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              required
+              maxLength={13}
+              placeholder="10-digit mobile"
+              className="mt-1.5"
+              value={form.phone}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+            <p className="mt-1 text-xs text-muted">10-digit Indian mobile (e.g. 9876543210)</p>
+          </div>
+          <div>
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              type="text"
+              required
+              className="mt-1.5"
+              value={form.address}
+              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="city">City</Label>
+            <Input
+              id="city"
+              type="text"
+              required
+              className="mt-1.5"
+              value={form.city}
+              onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="state">State</Label>
+            <Input
+              id="state"
+              type="text"
+              required
+              className="mt-1.5"
+              value={form.state}
+              onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="pincode">Pin code</Label>
+            <Input
+              id="pincode"
+              type="text"
+              inputMode="numeric"
+              required
+              maxLength={6}
+              pattern="\d{6}"
+              className="mt-1.5"
+              value={form.pincode}
+              onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+            />
+          </div>
           <Button type="submit" variant="terracotta" className="w-full" disabled={loading || !items.length}>
             {loading ? "Processing..." : `Pay ${formatINR(subtotal())}`}
           </Button>
