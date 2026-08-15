@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Vercel demo: provider = "postgresql" + Neon/Vercel Postgres DATABASE_URL (current)
+// Local SQLite:  provider = "sqlite"      + DATABASE_URL="file:./dev.db"
+// Hostinger:     provider = "mysql"       + DATABASE_URL="mysql://USER:PASS@HOST:3306/DB"
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("CUSTOMER")
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  orders        Order[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  title        String
+  slug         String      @unique
+  description  String
+  brand        String
+  volume       String?
+  mrp          Float
+  sellingPrice Float
+  discount     Float       @default(0)
+  sku          String      @unique
+  stock        Int         @default(0)
+  category     String
+  benefits     String      @default("[]")
+  ingredients  String?
+  usage        String?
+  images       String      @default("[]")
+  rating       Float       @default(4.5)
+  reviewCount  Int         @default(0)
+  isHidden     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  orderItems   OrderItem[]
+  stockLogs    StockLog[]
+}
+
+model StockLog {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  change    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique
+  userId            String?
+  user              User?       @relation(fields: [userId], references: [id])
+  email             String
+  totalAmount       Float
+  paymentStatus     String      @default("PENDING")
+  orderStatus       String      @default("PENDING")
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  shippingAddress   String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  items             OrderItem[]
+  shipment          Shipment?
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Shipment {
+  id                String  @id @default(cuid())
+  orderId           String  @unique
+  order             Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shiprocketOrderId String?
+  shipmentId        String?
+  awbCode           String?
+  courierName       String?
+  trackingStatus    String?
+  trackingUrl       String?
+}
+
+model BlogPost {
+  id         String   @id @default(cuid())
+  title      String
+  slug       String   @unique
+  excerpt    String
+  content    String
+  coverImage String?
+  tags       String   @default("[]")
+  published  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

@@ -1,0 +1,17 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: elorakart
+      MYSQL_USER: elora
+      MYSQL_PASSWORD: elora
+    volumes:
+      - elorakart_mysql:/var/lib/mysql
+    command: ["--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4"]
+
+volumes:
+  elorakart_mysql:
