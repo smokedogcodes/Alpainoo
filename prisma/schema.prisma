@@ -100,23 +100,27 @@ model StockLog {
 }
 
 model Order {
-  id                String      @id @default(cuid())
-  orderNumber       String      @unique
-  userId            String?
-  user              User?       @relation(fields: [userId], references: [id])
-  email             String
-  totalAmount       Float
-  paymentStatus     String      @default("PENDING")
-  orderStatus       String      @default("PENDING")
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  shippingAddress   String
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  items             OrderItem[]
-  shipment          Shipment?
+  id                   String      @id @default(cuid())
+  orderNumber          String      @unique
+  userId               String?
+  user                 User?       @relation(fields: [userId], references: [id])
+  email                String
+  totalAmount          Float
+  paymentStatus        String      @default("PENDING")
+  orderStatus          String      @default("PENDING")
+  razorpayOrderId      String?
+  razorpayPaymentId    String?
+  shippingAddress      String
+  cancelRequestedAt    DateTime?
+  cancelReason         String?
+  previousOrderStatus  String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  items                OrderItem[]
+  shipment             Shipment?
 
   @@index([userId])
+  @@index([email])
 }
 
 model OrderItem {

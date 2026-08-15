@@ -167,3 +167,124 @@ export async function deleteBlog(id: string) {
   revalidatePath("/admin/blog");
   revalidatePath("/blog");
 }
+
+export async function setUserRole(userId: string, role: "ADMIN" | "CUSTOMER") {
+  await requireAdmin();
+  if (!userId || (role !== "ADMIN" && role !== "CUSTOMER")) {
+    throw new Error("Invalid input");
+  }
+
+  if (role === "CUSTOMER") {
+    const admins = await prisma.user.count({ where: { role: "ADMIN" } });
+    const target = await prisma.user.findUnique({ where: { id: userId } });
+    if (target?.role === "ADMIN" && admins <= 1) {
+      throw new Error("Cannot remove the last admin");
+    }
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { role } });
+  revalidatePath("/admin/users");
+}
+
+export async function approveCancelRequest(orderId: string) {
+  await requireAdmin();
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order) throw new Error("Order not found");
+  if (order.orderStatus !== "CANCEL_REQUESTED") {
+    throw new Error("No cancel request pending");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (order.paymentStatus === "PAID") {
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+        await tx.stockLog.create({
+          data: {
+            productId: item.productId,
+            change: item.quantity,
+            note: `Cancel approved ${order.orderNumber}`,
+          },
+        });
+      }
+    }
+
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        orderStatus: "CANCELLED",
+        cancelRequestedAt: null,
+        cancelReason: order.cancelReason,
+        previousOrderStatus: null,
+      },
+    });
+  });
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/orders");
+}
+
+export async function rejectCancelRequest(orderId: string) {
+  await requireAdmin();
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new Error("Order not found");
+  if (order.orderStatus !== "CANCEL_REQUESTED") {
+    throw new Error("No cancel request pending");
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      orderStatus: order.previousOrderStatus || "PAID",
+      cancelRequestedAt: null,
+      cancelReason: null,
+      previousOrderStatus: null,
+    },
+  });
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/orders");
+}
+
+export async function syncShipmentTracking(orderId: string) {
+  await requireAdmin();
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { shipment: true },
+  });
+  if (!order?.shipment) throw new Error("No shipment for this order");
+
+  const { trackShipment } = await import("@/lib/shiprocket");
+  const track = await trackShipment({
+    awb: order.shipment.awbCode,
+    shipmentId: order.shipment.shipmentId,
+    createdAt: order.createdAt,
+    orderNumber: order.orderNumber,
+  });
+
+  await prisma.shipment.update({
+    where: { id: order.shipment.id },
+    data: {
+      trackingStatus: track.status,
+      trackingUrl: track.trackingUrl || order.shipment.trackingUrl,
+      courierName: track.courierName || order.shipment.courierName,
+      awbCode: track.awb || order.shipment.awbCode,
+    },
+  });
+
+  if (track.mappedOrderStatus && order.orderStatus !== "CANCELLED" && order.orderStatus !== "CANCEL_REQUESTED") {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { orderStatus: track.mappedOrderStatus },
+    });
+  }
+
+  revalidatePath("/admin/orders");
+  revalidatePath(`/orders/${orderId}`);
+  return track;
+}

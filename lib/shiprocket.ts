@@ -101,3 +101,128 @@ export async function createShiprocketOrder(payload: ShiprocketOrderPayload) {
   }
   return res.json();
 }
+
+export type TrackingEvent = {
+  status: string;
+  location?: string;
+  at?: string;
+};
+
+export type TrackResult = {
+  mock: boolean;
+  status: string;
+  awb?: string | null;
+  courierName?: string | null;
+  trackingUrl?: string | null;
+  events: TrackingEvent[];
+  mappedOrderStatus?: "PROCESSING" | "SHIPPED" | "DELIVERED";
+};
+
+function demoTrack(createdAt: Date, orderNumber: string, awb?: string | null): TrackResult {
+  const hours = Math.max(0, (Date.now() - createdAt.getTime()) / 36e5);
+  let status = "READY_TO_SHIP";
+  let mappedOrderStatus: TrackResult["mappedOrderStatus"] = "PROCESSING";
+  const events: TrackingEvent[] = [
+    { status: "Order confirmed", at: createdAt.toISOString(), location: "Warehouse" },
+  ];
+
+  if (hours >= 6) {
+    status = "IN_TRANSIT";
+    mappedOrderStatus = "SHIPPED";
+    events.push({
+      status: "Picked up by courier",
+      at: new Date(createdAt.getTime() + 6 * 36e5).toISOString(),
+      location: "Origin hub",
+    });
+  }
+  if (hours >= 24) {
+    status = "OUT_FOR_DELIVERY";
+    events.push({
+      status: "Out for delivery",
+      at: new Date(createdAt.getTime() + 24 * 36e5).toISOString(),
+      location: "Local hub",
+    });
+  }
+  if (hours >= 48) {
+    status = "DELIVERED";
+    mappedOrderStatus = "DELIVERED";
+    events.push({
+      status: "Delivered",
+      at: new Date(createdAt.getTime() + 48 * 36e5).toISOString(),
+      location: "Customer",
+    });
+  }
+
+  return {
+    mock: true,
+    status,
+    awb: awb || `DEMO${orderNumber.replace(/\D/g, "").slice(-8)}`,
+    courierName: "Shiprocket Demo Courier",
+    trackingUrl: `https://shiprocket.co/tracking/${awb || orderNumber}`,
+    events,
+    mappedOrderStatus,
+  };
+}
+
+function mapCourierStatus(raw: string): TrackResult["mappedOrderStatus"] | undefined {
+  const s = raw.toLowerCase();
+  if (s.includes("deliver")) return "DELIVERED";
+  if (s.includes("transit") || s.includes("shipped") || s.includes("out for")) return "SHIPPED";
+  if (s.includes("pickup") || s.includes("processing") || s.includes("ready")) return "PROCESSING";
+  return undefined;
+}
+
+/** Live Shiprocket track when credentials exist; otherwise deterministic demo timeline */
+export async function trackShipment(input: {
+  awb?: string | null;
+  shipmentId?: string | null;
+  createdAt: Date;
+  orderNumber: string;
+}): Promise<TrackResult> {
+  const token = await getShiprocketToken();
+  if (!token || !input.awb) {
+    return demoTrack(input.createdAt, input.orderNumber, input.awb);
+  }
+
+  try {
+    const res = await fetch(`${BASE}/courier/track/awb/${encodeURIComponent(input.awb)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      return demoTrack(input.createdAt, input.orderNumber, input.awb);
+    }
+    const data = await res.json();
+    const track = data?.tracking_data || data?.data || {};
+    const activities: Array<{
+      activity?: string;
+      date?: string;
+      location?: string;
+      status?: string;
+    }> = track?.shipment_track_activities || track?.track_status || [];
+
+    const current =
+      track?.shipment_status ||
+      track?.track_status ||
+      activities[0]?.status ||
+      activities[0]?.activity ||
+      "IN_TRANSIT";
+
+    const events: TrackingEvent[] = (Array.isArray(activities) ? activities : []).slice(0, 12).map((a) => ({
+      status: a.activity || a.status || "Update",
+      location: a.location,
+      at: a.date,
+    }));
+
+    return {
+      mock: false,
+      status: String(current),
+      awb: input.awb,
+      courierName: track?.courier_name || null,
+      trackingUrl: track?.track_url || `https://shiprocket.co/tracking/${input.awb}`,
+      events,
+      mappedOrderStatus: mapCourierStatus(String(current)),
+    };
+  } catch {
+    return demoTrack(input.createdAt, input.orderNumber, input.awb);
+  }
+}

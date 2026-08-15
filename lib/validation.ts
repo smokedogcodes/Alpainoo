@@ -27,7 +27,10 @@ export const OrderStatusSchema = z.enum([
   "SHIPPED",
   "DELIVERED",
   "CANCELLED",
+  "CANCEL_REQUESTED",
 ]);
+
+export const ORDER_STATUSES = OrderStatusSchema.options;
 
 export const PincodeSchema = z.object({
   pincode: z.string().regex(/^\d{6}$/),

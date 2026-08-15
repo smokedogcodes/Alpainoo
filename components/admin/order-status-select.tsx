@@ -14,9 +14,17 @@ export function OrderStatusSelect({ id, value }: { id: string; value: string }) 
         router.refresh();
       }}
     >
-      {["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"].map((s) => (
+      {[
+        "PENDING",
+        "PAID",
+        "PROCESSING",
+        "CANCEL_REQUESTED",
+        "SHIPPED",
+        "DELIVERED",
+        "CANCELLED",
+      ].map((s) => (
         <option key={s} value={s}>
-          {s}
+          {s.replaceAll("_", " ")}
         </option>
       ))}
     </select>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { LogOut, Menu, ShoppingBag, User } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -20,7 +20,13 @@ const nav = [
   { href: "/about", label: "About" },
 ];
 
-export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
+export function SiteHeader({
+  userEmail,
+  userRole,
+}: {
+  userEmail?: string | null;
+  userRole?: string | null;
+}) {
   const { data: session, status } = useSession();
   const count = useCart((s) => s.items.reduce((n, i) => n + i.quantity, 0));
   const [accountOpen, setAccountOpen] = useState(false);
@@ -28,6 +34,8 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
 
   const user = session?.user;
   const signedIn = status === "authenticated" && Boolean(user?.email || userEmail);
+  const role = user?.role || userRole;
+  const isAdmin = role === "ADMIN";
   const displayName =
     user?.name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
@@ -76,6 +84,22 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
                     <>
                       <p className="px-3 text-sm font-medium">{displayName}</p>
                       <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
+                      <Link
+                        href="/orders"
+                        className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                      >
+                        <Package className="h-4 w-4" />
+                        My Orders
+                      </Link>
+                      {isAdmin && (
+                        <Link
+                          href="/admin"
+                          className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                        >
+                          <LayoutDashboard className="h-4 w-4" />
+                          Admin view
+                        </Link>
+                      )}
                       <button
                         type="button"
                         onClick={handleSignOut}
@@ -155,10 +179,30 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
                     >
                       <p className="truncate text-sm font-medium">{user?.name || displayName}</p>
                       <p className="truncate text-xs text-muted">{user?.email || userEmail}</p>
+                      <Link
+                        href="/orders"
+                        role="menuitem"
+                        className="mt-3 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <Package className="h-4 w-4" />
+                        My Orders
+                      </Link>
+                      {isAdmin && (
+                        <Link
+                          href="/admin"
+                          role="menuitem"
+                          className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                          onClick={() => setAccountOpen(false)}
+                        >
+                          <LayoutDashboard className="h-4 w-4" />
+                          Admin view
+                        </Link>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-3 w-full justify-start gap-2"
+                        className="mt-2 w-full justify-start gap-2"
                         onClick={handleSignOut}
                       >
                         <LogOut className="h-4 w-4" />

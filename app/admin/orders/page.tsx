@@ -2,12 +2,16 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
 import { OrderStatusSelect } from "@/components/admin/order-status-select";
+import { AdminOrderActions } from "@/components/admin/admin-order-actions";
+import { requireAdmin } from "@/lib/auth/admin";
 
 export default async function AdminOrdersPage({
   searchParams,
 }: {
   searchParams: { status?: string };
 }) {
+  await requireAdmin();
+
   const where = searchParams.status ? { orderStatus: searchParams.status } : {};
   const orders = await prisma.order.findMany({
     where,
@@ -15,7 +19,15 @@ export default async function AdminOrdersPage({
     orderBy: { createdAt: "desc" },
   });
 
-  const statuses = ["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"];
+  const statuses = [
+    "PENDING",
+    "PAID",
+    "PROCESSING",
+    "CANCEL_REQUESTED",
+    "SHIPPED",
+    "DELIVERED",
+    "CANCELLED",
+  ];
 
   return (
     <div className="space-y-6">
@@ -35,7 +47,7 @@ export default async function AdminOrdersPage({
               searchParams.status === s ? "bg-sage text-white" : "bg-white border"
             }`}
           >
-            {s}
+            {s.replaceAll("_", " ")}
           </Link>
         ))}
       </div>
@@ -46,7 +58,14 @@ export default async function AdminOrdersPage({
               <div>
                 <p className="font-medium">{o.orderNumber}</p>
                 <p className="text-sm text-muted">{o.email}</p>
-                <p className="mt-1 text-sm">{formatINR(o.totalAmount)} · {o.items.length} items</p>
+                <p className="mt-1 text-sm">
+                  {formatINR(o.totalAmount)} · {o.items.length} items
+                </p>
+                {o.orderStatus === "CANCEL_REQUESTED" && (
+                  <span className="mt-2 inline-block rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                    Cancel requested
+                  </span>
+                )}
               </div>
               <OrderStatusSelect id={o.id} value={o.orderStatus} />
             </div>
@@ -58,6 +77,12 @@ export default async function AdminOrdersPage({
               <div>Courier: {o.shipment?.courierName || "—"}</div>
               <div>Tracking: {o.shipment?.trackingStatus || "—"}</div>
             </dl>
+            <AdminOrderActions
+              orderId={o.id}
+              cancelRequested={o.orderStatus === "CANCEL_REQUESTED"}
+              cancelReason={o.cancelReason}
+              hasShipment={Boolean(o.shipment)}
+            />
           </div>
         ))}
         {!orders.length && <p className="text-muted">No orders found.</p>}

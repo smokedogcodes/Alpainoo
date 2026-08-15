@@ -17,17 +17,25 @@ declare module "next-auth" {
   }
 }
 
+/**
+ * Optional first-time bootstrap only: if ADMIN_EMAIL matches and user is still CUSTOMER,
+ * promote once. Ongoing role changes happen via DB /admin/users.
+ */
 async function ensureAdminRole(userId: string, email: string | null | undefined) {
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-  if (!adminEmail || !email) return "CUSTOMER";
-  if (email.toLowerCase() === adminEmail) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { role: "ADMIN" },
-    });
-    return "ADMIN";
-  }
-  return undefined;
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase()?.trim();
+  if (!adminEmail || !email) return;
+  if (email.toLowerCase() !== adminEmail) return;
+
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (existing?.role === "ADMIN") return;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { role: "ADMIN" },
+  });
 }
 
 const useSecureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;

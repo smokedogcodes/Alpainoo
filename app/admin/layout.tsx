@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Package, ShoppingBag, FileText, BarChart3, Menu } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, FileText, BarChart3, Menu, Users } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 
@@ -7,6 +7,7 @@ const links = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/blog", label: "Blog", icon: FileText },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
 ];
