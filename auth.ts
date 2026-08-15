@@ -17,12 +17,6 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
-  interface JWT {
-    role?: string;
-  }
-}
-
 /**
  * Optional first-time bootstrap only: promote matching emails while still CUSTOMER.
  * Ongoing role changes happen via DB /admin/users.
