@@ -1,21 +1,24 @@
 import type { Metadata } from "next";
-import { EB_Garamond, Hanken_Grotesk } from "next/font/google";
+import { Cormorant_Garamond, DM_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { auth } from "@/auth";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import "./globals.css";
 
-const ebGaramond = EB_Garamond({
+// Stable Google fonts for Vercel builds (same CSS vars as Stitch tokens)
+const display = Cormorant_Garamond({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
   variable: "--font-eb-garamond",
+  display: "swap",
 });
 
-const hanken = Hanken_Grotesk({
+const body = DM_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-hanken",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -31,7 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <body className={`${ebGaramond.variable} ${hanken.variable} min-h-screen antialiased`}>
+      <body className={`${display.variable} ${body.variable} min-h-screen antialiased`}>
         <AuthProvider session={session}>
           {children}
           <Toaster richColors position="top-center" />
