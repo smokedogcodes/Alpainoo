@@ -10,10 +10,10 @@ function Icon({ children, label }: { children: React.ReactNode; label: string })
 
 export function SiteFooter() {
   return (
-    <footer className="mt-0 border-t border-border bg-[#f3eee6]">
+    <footer className="mt-0 border-t border-border/30 bg-surface-container">
       <div className="mx-auto grid max-w-store gap-10 px-4 py-14 md:grid-cols-3 md:px-6">
         <div>
-          <p className="font-display text-3xl">Elorakart</p>
+          <p className="font-display text-3xl tracking-tight text-sage">Elorakart</p>
           <p className="mt-3 text-sm leading-relaxed text-muted">
             123 Promenade Street
             <br />
@@ -22,13 +22,13 @@ export function SiteFooter() {
           <p className="mt-3 text-sm text-muted">contactus@elorakart.com</p>
           <ul className="mt-4 flex flex-wrap gap-3 text-sm text-muted">
             <li><Link href="/sale" className="font-medium text-price-sale hover:underline">Sale</Link></li>
-            <li><Link href="/products" className="hover:underline">Shop</Link></li>
-            <li><Link href="/blog" className="hover:underline">Blog</Link></li>
-            <li><Link href="/about" className="hover:underline">About</Link></li>
+            <li><Link href="/products" className="hover:underline hover:text-sage">Shop</Link></li>
+            <li><Link href="/blog" className="hover:underline hover:text-sage">Blog</Link></li>
+            <li><Link href="/about" className="hover:underline hover:text-sage">About</Link></li>
           </ul>
         </div>
         <div>
-          <p className="font-display text-xl">Social Media</p>
+          <p className="font-display text-xl text-sage">Social Media</p>
           <div className="mt-4 flex gap-4 text-foreground/80">
             <Icon label="Facebook">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
@@ -50,21 +50,21 @@ export function SiteFooter() {
           </div>
         </div>
         <div>
-          <p className="font-display text-xl">Newsletter</p>
+          <p className="font-display text-xl text-sage">Newsletter</p>
           <p className="mt-2 text-sm text-muted">Sign up to receive botanical beauty tips.</p>
           <form className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input
               type="email"
               placeholder="Email"
-              className="h-11 flex-1 rounded-none border border-border bg-white px-3 text-sm"
+              className="h-11 flex-1 rounded border border-border/50 bg-white px-3 text-sm"
             />
-            <button type="submit" className="h-11 rounded-none bg-foreground px-5 text-sm text-white">
+            <button type="submit" className="h-11 rounded bg-sage px-5 text-xs font-semibold uppercase tracking-widest text-white hover:bg-sage-muted">
               Sign Up
             </button>
           </form>
         </div>
       </div>
-      <div className="flex flex-col items-center justify-between gap-2 border-t border-border/70 px-4 py-4 text-xs text-muted sm:flex-row md:px-6">
+      <div className="flex flex-col items-center justify-between gap-2 border-t border-border/40 px-4 py-4 text-xs uppercase tracking-widest text-muted sm:flex-row md:px-6">
         <p>© {new Date().getFullYear()} Elorakart. All rights reserved.</p>
         <div className="flex gap-4">
           <Link href="/about">Privacy Policy</Link>

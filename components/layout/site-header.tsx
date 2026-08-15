@@ -50,7 +50,7 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
         "z-40",
         onHome
           ? "absolute inset-x-0 top-0 border-none bg-transparent"
-          : "sticky top-0 border-b border-border/80 bg-cream/95 backdrop-blur"
+          : "glass-nav sticky top-0 border-b border-border/30"
       )}
     >
       <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-4 md:px-6">
@@ -61,16 +61,18 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col p-0">
+            <SheetContent side="left" className="flex flex-col bg-cream p-0">
               <SheetHeader>
-                <SheetTitle className="font-display text-2xl">Elorakart</SheetTitle>
+                <SheetTitle className="font-display text-2xl tracking-tight text-sage">
+                  Elorakart
+                </SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-4 pb-8">
                 {nav.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="min-h-[44px] flex items-center rounded-md px-3 text-base hover:bg-off-white"
+                    className="flex min-h-[44px] items-center rounded-md px-3 text-sm uppercase tracking-widest text-muted hover:bg-off-white hover:text-sage"
                   >
                     {item.label}
                   </Link>
@@ -78,7 +80,7 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
               </nav>
             </SheetContent>
           </Sheet>
-          <Link href="/" className="font-display text-2xl tracking-tight md:text-3xl">
+          <Link href="/" className="font-display text-2xl tracking-tight text-sage md:text-3xl">
             Elorakart
           </Link>
         </div>
@@ -88,7 +90,7 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
             <Link
               key={item.href}
               href={item.href}
-              className="text-sm tracking-wide text-foreground/85 hover:text-sage"
+              className="text-xs font-semibold uppercase tracking-widest text-muted transition-colors hover:text-sage"
             >
               {item.label}
             </Link>
@@ -103,7 +105,7 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search..."
-                className="h-10 w-36 bg-cream/90 lg:w-44"
+                className="h-10 w-36 border-border/40 bg-cream/90 lg:w-44"
                 aria-label="Search"
               />
             </form>

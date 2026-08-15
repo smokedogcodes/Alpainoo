@@ -18,30 +18,31 @@ export default async function HomePage() {
 
   return (
     <>
-      {/*
-        Hero uses a crisp SVG botanical illustration — not the ~512×286 Stitch PNG,
-        which looked blurry when stretched full-bleed.
-      */}
       <section className="relative isolate min-h-[78vh] overflow-hidden bg-cream md:min-h-[90vh]">
-        <img
-          src="/hero/botanical-bg.svg"
-          alt="Elorakart botanical background"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+        <Image
+          src="/hero/green-leaves.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="pointer-events-none object-cover object-center opacity-40"
+          aria-hidden
         />
+        <div className="absolute inset-0 bg-gradient-to-b from-cream/70 via-cream/50 to-cream" />
 
         <div className="relative z-10 mx-auto flex min-h-[78vh] max-w-store flex-col items-center justify-center px-4 py-24 text-center md:min-h-[90vh] md:px-6">
-          <div className="flex h-60 w-60 flex-col items-center justify-center rounded-full bg-[#e8cfc6] px-7 shadow-[0_8px_40px_rgba(185,122,86,0.12)] md:h-[19.5rem] md:w-[19.5rem] md:px-10">
+          <div className="ambient-shadow flex h-60 w-60 flex-col items-center justify-center rounded-full bg-blush px-7 md:h-[19.5rem] md:w-[19.5rem] md:px-10">
             <p className="font-display text-2xl italic font-normal tracking-wide text-foreground/75 md:text-[1.75rem]">
               Elorakart
             </p>
-            <h1 className="mt-2 font-display text-[1.35rem] font-semibold leading-snug tracking-wide text-foreground md:text-[1.85rem] text-balance">
+            <h1 className="mt-2 font-display text-[1.35rem] font-medium leading-snug tracking-wide text-foreground md:text-[1.85rem] text-balance">
               Your Ultimate Online Skincare Destination
             </h1>
             <Button
               asChild
               variant="outline"
               size="lg"
-              className="mt-5 rounded-full border-foreground/70 bg-cream/50 px-9 hover:bg-cream/90"
+              className="mt-5 rounded-full border-sage/70 bg-cream/60 px-9 tracking-widest hover:bg-cream"
             >
               <Link href="/products">Shop Now</Link>
             </Button>
@@ -49,9 +50,9 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="border-b border-border/60 bg-cream">
+      <section className="border-b border-border/40 bg-cream">
         <div className="mx-auto max-w-store px-4 py-3.5 md:px-6">
-          <div className="flex justify-center gap-8 overflow-x-auto text-sm tracking-wide text-foreground/80">
+          <div className="flex justify-center gap-8 overflow-x-auto text-xs font-semibold uppercase tracking-widest text-muted">
             {[
               { label: "Sale", href: "/sale", highlight: true },
               { label: "Hair and Skin", href: "/products?category=Hair+Serum", active: true },
@@ -64,7 +65,7 @@ export default async function HomePage() {
                 href={item.href}
                 className={
                   item.highlight
-                    ? "whitespace-nowrap pb-1 font-semibold text-price-sale hover:underline"
+                    ? "whitespace-nowrap pb-1 text-price-sale hover:underline"
                     : item.active
                       ? "whitespace-nowrap border-b-2 border-sage pb-1 text-sage"
                       : "whitespace-nowrap pb-1 hover:text-sage"
@@ -77,11 +78,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-cream pb-16 pt-10">
+      <section className="bg-surface-low pb-16 pt-10">
         <div className="mx-auto max-w-store px-4 md:px-6">
           <div className="grid gap-12 lg:grid-cols-[1.4fr_0.9fr] lg:gap-16">
             <div>
-              <h2 className="font-display text-center text-3xl tracking-[0.2em] md:text-4xl">
+              <h2 className="font-display text-center text-3xl font-medium tracking-[0.12em] text-sage md:text-4xl">
                 BEST SELLERS
               </h2>
               <div className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2">
@@ -91,7 +92,7 @@ export default async function HomePage() {
               </div>
             </div>
             <div>
-              <h2 className="font-display text-center text-3xl tracking-[0.2em] md:text-4xl">
+              <h2 className="font-display text-center text-3xl font-medium tracking-[0.12em] text-sage md:text-4xl">
                 NEW ARRIVALS
               </h2>
               <ul className="mt-10 space-y-6">
@@ -105,10 +106,10 @@ export default async function HomePage() {
                     }
                   })();
                   return (
-                    <li key={p.id} className="flex gap-4 border-b border-border/70 pb-6">
+                    <li key={p.id} className="flex gap-4 border-b border-border/50 pb-6">
                       <Link
                         href={`/products/${p.slug}`}
-                        className="relative h-20 w-20 shrink-0 overflow-hidden bg-[#f6f1ea]"
+                        className="relative h-20 w-20 shrink-0 overflow-hidden bg-surface-container"
                       >
                         <Image
                           src={img}
@@ -122,11 +123,11 @@ export default async function HomePage() {
                       <div className="flex min-w-0 flex-1 flex-col justify-center">
                         <Link
                           href={`/products/${p.slug}`}
-                          className="font-display text-sm uppercase tracking-wide hover:underline"
+                          className="font-display text-sm uppercase tracking-wide text-sage hover:underline"
                         >
                           {p.title}
                         </Link>
-                        <p className="mt-1 font-display text-foreground/70">
+                        <p className="mt-1 text-sm text-muted">
                           {new Intl.NumberFormat("en-IN", {
                             style: "currency",
                             currency: "INR",
@@ -135,7 +136,7 @@ export default async function HomePage() {
                         </p>
                         <Link
                           href={`/products/${p.slug}`}
-                          className="mt-2 text-xs underline underline-offset-4"
+                          className="mt-2 text-xs uppercase tracking-widest underline underline-offset-4"
                         >
                           Add to Cart
                         </Link>
@@ -151,7 +152,7 @@ export default async function HomePage() {
 
       <section className="bg-sage py-16 text-white">
         <div className="mx-auto max-w-store px-4 md:px-6">
-          <h2 className="font-display text-center text-3xl tracking-[0.18em] md:text-4xl">
+          <h2 className="font-display text-center text-3xl font-medium tracking-[0.12em] md:text-4xl">
             EXPLORE OUR COLLECTIONS
           </h2>
           <div className="mt-12 grid grid-cols-1 gap-10 sm:grid-cols-3">

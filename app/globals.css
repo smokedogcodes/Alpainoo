@@ -2,32 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Stitch “Organic Minimalist” tokens — same CSS var names so existing UI keeps working */
 :root {
   --background: #faf9f6;
-  --foreground: #1f2937;
+  --foreground: #1d1b21;
   --cream: #faf9f6;
-  --off-white: #f7f5f2;
-  --blush: #f0d8d0;
-  --blush-soft: #fdf2f2;
-  --sage: #738c69;
-  --sage-muted: #94a38c;
-  --terracotta: #b97a56;
+  --off-white: #f8f1fa;
+  --blush: #f4dacf;
+  --blush-soft: #f7ddd2;
+  --sage: #545f4b;
+  --sage-muted: #6c7863;
+  --terracotta: #964419;
   --sale: #10b981;
-  --price-sale: #dc2626;
-  --muted: #6b7280;
+  --price-sale: #ba1a1a;
+  --muted: #6d5a51;
   --card: #ffffff;
-  --border: #e5e7eb;
-  --radius: 0.5rem;
+  --border: #c5c8be;
+  --radius: 0.25rem;
+  --surface-low: #f8f1fa;
+  --surface-container: #f2ecf5;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-dm-sans), system-ui, sans-serif;
+  font-family: var(--font-hanken), system-ui, sans-serif;
 }
 
-h1, h2, h3, .font-display {
-  font-family: var(--font-cormorant), Georgia, serif;
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-eb-garamond), Georgia, serif;
+  font-weight: 500;
 }
 
 @layer utilities {
@@ -37,9 +44,21 @@ h1, h2, h3, .font-display {
   .safe-pb {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+  .glass-nav {
+    background: rgba(250, 249, 246, 0.82);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .ambient-shadow {
+    box-shadow: 0 4px 20px -2px rgba(116, 128, 106, 0.08);
+  }
 }
 
 @media print {
-  .no-print { display: none !important; }
-  .print-only { display: block !important; }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
 }

@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, DM_Sans } from "next/font/google";
+import { EB_Garamond, Hanken_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import "./globals.css";
 
-const cormorant = Cormorant_Garamond({
+const ebGaramond = EB_Garamond({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-cormorant",
+  style: ["normal", "italic"],
+  variable: "--font-eb-garamond",
 });
 
-const dmSans = DM_Sans({
+const hanken = Hanken_Grotesk({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-dm-sans",
+  variable: "--font-hanken",
 });
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${cormorant.variable} ${dmSans.variable} min-h-screen antialiased`}>
+      <body className={`${ebGaramond.variable} ${hanken.variable} min-h-screen antialiased`}>
         <AuthProvider>
           {children}
           <Toaster richColors position="top-center" />

@@ -24,16 +24,18 @@ const config: Config = {
         "price-sale": "var(--price-sale)",
         muted: "var(--muted)",
         border: "var(--border)",
+        "surface-low": "var(--surface-low)",
+        "surface-container": "var(--surface-container)",
       },
       fontFamily: {
-        display: ["var(--font-cormorant)", "Georgia", "serif"],
-        sans: ["var(--font-dm-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-eb-garamond)", "Georgia", "serif"],
+        sans: ["var(--font-hanken)", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
       },
       maxWidth: {
-        store: "72rem",
+        store: "80rem",
       },
     },
   },
