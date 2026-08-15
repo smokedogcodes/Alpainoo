@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -41,35 +41,6 @@ export function SiteHeader({
     user?.email?.split("@")[0] ||
     userEmail?.split("@")[0] ||
     "Account";
-
-  useEffect(() => {
-    // #region agent log
-    fetch("http://127.0.0.1:7376/ingest/6e190034-3568-4fc1-85eb-6c282aded999", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "b3f0a8",
-      },
-      body: JSON.stringify({
-        sessionId: "b3f0a8",
-        timestamp: Date.now(),
-        runId: "pre-fix",
-        hypothesisId: "D",
-        location: "site-header.tsx:render",
-        message: "Header auth snapshot",
-        data: {
-          status,
-          serverRole: userRole || null,
-          clientRole: user?.role || null,
-          isAdmin,
-          signedIn,
-          hasClientEmail: Boolean(user?.email),
-          hasServerEmail: Boolean(userEmail),
-        },
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [status, userRole, user?.role, user?.email, userEmail, isAdmin, signedIn]);
 
   async function handleSignIn() {
     setAccountOpen(false);

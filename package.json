@@ -34,7 +34,6 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "framer-motion": "^13.1.0",
-    "isomorphic-dompurify": "^3.22.0",
     "lucide-react": "^1.31.0",
     "mysql2": "^3.23.3",
     "next": "14.2.35",

@@ -47,24 +47,6 @@ export default function CheckoutPage() {
       });
 
       if (result.mock || !result.key) {
-        // #region agent log
-        fetch("http://127.0.0.1:7376/ingest/6e190034-3568-4fc1-85eb-6c282aded999", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "b3f0a8",
-          },
-          body: JSON.stringify({
-            sessionId: "b3f0a8",
-            timestamp: Date.now(),
-            runId: "post-fix",
-            hypothesisId: "checkout-esm",
-            location: "checkout/page.tsx",
-            message: "Checkout createOrder succeeded (mock path)",
-            data: { mock: true, hasOrderId: Boolean(result.orderId) },
-          }),
-        }).catch(() => {});
-        // #endregion
         await confirmMockPayment(result.orderId);
         clear();
         toast.success("Order placed (demo payment)");
@@ -102,26 +84,6 @@ export default function CheckoutPage() {
       });
       rzp.open();
     } catch (err) {
-      // #region agent log
-      fetch("http://127.0.0.1:7376/ingest/6e190034-3568-4fc1-85eb-6c282aded999", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "b3f0a8",
-        },
-        body: JSON.stringify({
-          sessionId: "b3f0a8",
-          timestamp: Date.now(),
-          runId: "post-fix",
-          hypothesisId: "checkout-esm",
-          location: "checkout/page.tsx",
-          message: "Checkout failed",
-          data: {
-            errMsg: err instanceof Error ? err.message.slice(0, 160) : "unknown",
-          },
-        }),
-      }).catch(() => {});
-      // #endregion
       toast.error(err instanceof Error ? err.message : "Checkout failed");
     } finally {
       setLoading(false);
