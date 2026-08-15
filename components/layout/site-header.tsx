@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, Search, ShoppingBag, User } from "lucide-react";
-import { signIn, signOut } from "next-auth/react";
+import { LogOut, Menu, ShoppingBag, User } from "lucide-react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useCart } from "@/lib/cart";
 import { CartSheet } from "@/components/cart/cart-sheet";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { HeaderSearch } from "@/components/layout/header-search";
+import { useRouter } from "next/navigation";
 
 const nav = [
   { href: "/sale", label: "Sale" },
@@ -22,38 +21,33 @@ const nav = [
 ];
 
 export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
+  const { data: session, status } = useSession();
   const count = useCart((s) => s.items.reduce((n, i) => n + i.quantity, 0));
-  const [q, setQ] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
-  const onHome = pathname === "/";
+
+  const user = session?.user;
+  const signedIn = status === "authenticated" && Boolean(user?.email || userEmail);
+  const displayName =
+    user?.name?.split(" ")[0] ||
+    user?.email?.split("@")[0] ||
+    userEmail?.split("@")[0] ||
+    "Account";
 
   async function handleSignIn() {
+    setAccountOpen(false);
     await signIn("google", { callbackUrl: "/" });
   }
 
   async function handleSignOut() {
+    setAccountOpen(false);
     await signOut({ callbackUrl: "/" });
     router.refresh();
   }
 
-  function onSearch(e: React.FormEvent) {
-    e.preventDefault();
-    router.push(`/products?q=${encodeURIComponent(q)}`);
-    setSearchOpen(false);
-  }
-
   return (
-    <header
-      className={cn(
-        "z-40",
-        onHome
-          ? "absolute inset-x-0 top-0 border-none bg-transparent"
-          : "glass-nav sticky top-0 border-b border-border/30"
-      )}
-    >
-      <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-4 md:px-6">
+    <header className="glass-nav sticky top-0 z-40 border-b border-border/50">
+      <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-3.5 md:px-6">
         <div className="flex items-center gap-2 lg:w-44">
           <Sheet>
             <SheetTrigger asChild>
@@ -77,6 +71,31 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
                     {item.label}
                   </Link>
                 ))}
+                <div className="mt-4 border-t border-border pt-4">
+                  {signedIn ? (
+                    <>
+                      <p className="px-3 text-sm font-medium">{displayName}</p>
+                      <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Log out
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSignIn}
+                      className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                    >
+                      <User className="h-4 w-4" />
+                      Sign in with Google
+                    </button>
+                  )}
+                </div>
               </nav>
             </SheetContent>
           </Sheet>
@@ -97,32 +116,74 @@ export function SiteHeader({ userEmail }: { userEmail?: string | null }) {
           ))}
         </nav>
 
-        <div className="flex items-center justify-end gap-1 sm:gap-2 lg:w-44">
-          {searchOpen ? (
-            <form onSubmit={onSearch} className="flex items-center gap-2">
-              <Input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search..."
-                className="h-10 w-36 border-border/40 bg-cream/90 lg:w-44"
-                aria-label="Search"
-              />
-            </form>
-          ) : (
-            <Button variant="ghost" size="icon" onClick={() => setSearchOpen(true)} aria-label="Search">
-              <Search className="h-5 w-5" />
-            </Button>
-          )}
-          {userEmail ? (
-            <Button variant="ghost" size="icon" onClick={handleSignOut} title={userEmail} aria-label="Sign out">
-              <User className="h-5 w-5" />
-            </Button>
-          ) : (
-            <Button variant="ghost" size="icon" onClick={handleSignIn} aria-label="Sign in">
-              <User className="h-5 w-5" />
-            </Button>
-          )}
+        <div className="flex items-center justify-end gap-1 sm:gap-2 lg:min-w-44">
+          <HeaderSearch />
+
+          <div className="relative">
+            {signedIn ? (
+              <>
+                <Button
+                  variant="ghost"
+                  className="hidden h-10 gap-2 px-2 sm:inline-flex"
+                  onClick={() => setAccountOpen((o) => !o)}
+                  aria-expanded={accountOpen}
+                  aria-haspopup="menu"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="max-w-[7rem] truncate text-sm font-medium">{displayName}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="sm:hidden"
+                  onClick={() => setAccountOpen((o) => !o)}
+                  aria-label="Account menu"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+                {accountOpen && (
+                  <>
+                    <button
+                      type="button"
+                      className="fixed inset-0 z-40 cursor-default"
+                      aria-label="Close account menu"
+                      onClick={() => setAccountOpen(false)}
+                    />
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"
+                    >
+                      <p className="truncate text-sm font-medium">{user?.name || displayName}</p>
+                      <p className="truncate text-xs text-muted">{user?.email || userEmail}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full justify-start gap-2"
+                        onClick={handleSignOut}
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Log out
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                className="h-10 gap-2 px-2"
+                onClick={handleSignIn}
+                disabled={status === "loading"}
+                aria-label="Sign in with Google"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden text-sm sm:inline">
+                  {status === "loading" ? "…" : "Sign in"}
+                </span>
+              </Button>
+            )}
+          </div>
+
           <CartSheet>
             <Button variant="ghost" size="icon" className="relative" aria-label="Cart">
               <ShoppingBag className="h-5 w-5" />

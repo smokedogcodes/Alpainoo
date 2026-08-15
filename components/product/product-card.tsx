@@ -50,11 +50,11 @@ export function ProductCard({
   }
 
   return (
-    <article className="group flex flex-col">
+    <article className="group flex flex-col transition-transform duration-300 hover:-translate-y-1">
       <Link
         href={`/products/${product.slug}`}
         className={cn(
-          "relative block overflow-hidden aspect-square",
+          "relative block overflow-hidden aspect-square transition-shadow duration-300 group-hover:shadow-[0_12px_30px_-12px_rgba(84,95,75,0.25)]",
           editorial ? "bg-[#f6f1ea]" : "rounded-lg bg-blush-soft"
         )}
       >
@@ -63,7 +63,7 @@ export function ProductCard({
           alt={product.title}
           fill
           sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
-          className="transition duration-300 group-hover:scale-[1.03]"
+          className="transition duration-500 group-hover:scale-[1.05]"
         />
         {!editorial && onSale && (
           <span className="absolute right-2 top-2 z-10 rounded bg-sale px-2 py-0.5 text-[10px] font-semibold uppercase text-white">

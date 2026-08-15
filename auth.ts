@@ -30,20 +30,70 @@ async function ensureAdminRole(userId: string, email: string | null | undefined)
   return undefined;
 }
 
+const useSecureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
     Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      clientId: process.env.AUTH_GOOGLE_ID?.trim(),
+      clientSecret: process.env.AUTH_GOOGLE_SECRET?.trim(),
       allowDangerousEmailAccountLinking: true,
     }),
   ],
-  // JWT keeps /admin middleware Edge-compatible (no Prisma in middleware)
   session: { strategy: "jwt" },
   pages: {
     signIn: "/",
-    error: "/",
+    error: "/auth/error",
+  },
+  cookies: {
+    pkceCodeVerifier: {
+      name: `${useSecureCookies ? "__Secure-" : ""}authjs.pkce.code_verifier`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+        maxAge: 60 * 15,
+      },
+    },
+    state: {
+      name: `${useSecureCookies ? "__Secure-" : ""}authjs.state`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+        maxAge: 60 * 15,
+      },
+    },
+    callbackUrl: {
+      name: `${useSecureCookies ? "__Secure-" : ""}authjs.callback-url`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
+    csrfToken: {
+      name: `${useSecureCookies ? "__Host-" : ""}authjs.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
+    sessionToken: {
+      name: `${useSecureCookies ? "__Secure-" : ""}authjs.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -52,7 +102,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
         (token as { role?: string }).role = role || dbUser?.role || "CUSTOMER";
         token.sub = user.id;
+        if (user.name) token.name = user.name;
+        if (user.email) token.email = user.email;
         if (user.image) {
+          token.picture = user.image;
           await prisma.user.update({
             where: { id: user.id },
             data: { avatarUrl: user.image },
@@ -65,6 +118,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = token.sub || "";
         session.user.role = (token as { role?: string }).role || "CUSTOMER";
+        if (token.name) session.user.name = token.name as string;
+        if (token.email) session.user.email = token.email as string;
+        if (token.picture) session.user.image = token.picture as string;
       }
       return session;
     },
@@ -83,4 +139,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   trustHost: true,
+  secret: process.env.AUTH_SECRET,
 });

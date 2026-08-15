@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { EB_Garamond, Hanken_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
+import { auth } from "@/auth";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import "./globals.css";
 
@@ -25,11 +26,13 @@ export const metadata: Metadata = {
   description: "Your ultimate online skincare destination for serums, haircare, and fragrances.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+
   return (
     <html lang="en">
       <body className={`${ebGaramond.variable} ${hanken.variable} min-h-screen antialiased`}>
-        <AuthProvider>
+        <AuthProvider session={session}>
           {children}
           <Toaster richColors position="top-center" />
         </AuthProvider>

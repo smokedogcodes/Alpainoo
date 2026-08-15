@@ -19,12 +19,14 @@ export default async function ProductsPage({
   searchParams: SearchParams;
 }) {
   const where: Record<string, unknown> = { isHidden: false };
+  const query = searchParams.q?.trim();
 
-  if (searchParams.q) {
+  if (query) {
     where.OR = [
-      { title: { contains: searchParams.q } },
-      { brand: { contains: searchParams.q } },
-      { category: { contains: searchParams.q } },
+      { title: { contains: query, mode: "insensitive" } },
+      { brand: { contains: query, mode: "insensitive" } },
+      { category: { contains: query, mode: "insensitive" } },
+      { sku: { contains: query, mode: "insensitive" } },
     ];
   }
   if (searchParams.category) where.category = searchParams.category;
@@ -58,7 +60,17 @@ export default async function ProductsPage({
 
   return (
     <div className="mx-auto max-w-store px-4 py-8 md:px-6">
-      <h1 className="font-display text-3xl md:text-4xl">Shop All</h1>
+      <h1 className="font-display text-3xl md:text-4xl">
+        {query ? `Results for “${query}”` : "Shop All"}
+      </h1>
+      {query && (
+        <p className="mt-2 text-sm text-muted">
+          Showing matches in title, brand, category, and SKU.{" "}
+          <a href="/products" className="text-sage underline underline-offset-2">
+            Clear search
+          </a>
+        </p>
+      )}
       <div className="mt-6 grid gap-8 lg:grid-cols-[240px_1fr]">
         <ProductFilters
           brands={brands.map((b) => b.brand)}
