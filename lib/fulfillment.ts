@@ -47,6 +47,12 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
   });
 
   if (updated.alreadyPaid) return updated.order;
+
+  // Notify once on first successful payment (fail-soft)
+  void import("@/lib/email/orders")
+    .then(({ notifyOrderPaid }) => notifyOrderPaid(updated.order))
+    .catch((err) => console.error("[email] order paid notify:", err));
+
   if (updated.order.shipment) return updated.order;
 
   try {

@@ -58,6 +58,16 @@ export async function requestOrderCancel(orderId: string, reason: string) {
     },
   });
 
+  void import("@/lib/email/orders")
+    .then(({ notifyCancelRequested }) =>
+      notifyCancelRequested({
+        ...order,
+        orderStatus: "CANCEL_REQUESTED",
+        cancelReason: parsed.data.reason,
+      })
+    )
+    .catch((err) => console.error("[email] cancel request notify:", err));
+
   revalidatePath("/orders");
   revalidatePath(`/orders/${order.id}`);
   revalidatePath("/admin/orders");

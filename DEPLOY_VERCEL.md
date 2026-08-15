@@ -72,8 +72,10 @@ In the Vercel project → **Settings → Environment Variables**, add these for 
 | `AUTH_SECRET` | Run locally: `openssl rand -base64 32` (or any long random string) |
 | `AUTH_URL` | Leave blank for first deploy, then set to `https://YOUR-APP.vercel.app` |
 | `NEXT_PUBLIC_APP_URL` | Same as `AUTH_URL` after first deploy |
-| `ADMIN_EMAIL` | Your Gmail (for admin role later) |
+| `ADMIN_EMAIL` | Your Gmail (admin bootstrap + CC on order emails) |
 | `ADMIN_DEV_BYPASS` | `true` (so you can open `/admin` without Google for the demo) |
+| `RESEND_API_KEY` | From https://resend.com (required for order emails) |
+| `EMAIL_FROM` | e.g. `Elorakart <onboarding@resend.dev>` or a verified domain sender |
 
 Optional for demo (can leave empty):
 

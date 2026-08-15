@@ -123,8 +123,30 @@ export async function deleteProduct(id: string) {
 export async function updateOrderStatus(id: string, orderStatus: string) {
   await requireAdmin();
   const status = OrderStatusSchema.parse(orderStatus);
-  await prisma.order.update({ where: { id }, data: { orderStatus: status } });
+  const existing = await prisma.order.findUnique({
+    where: { id },
+    include: { items: { include: { product: true } }, shipment: true },
+  });
+  if (!existing) throw new Error("Order not found");
+  if (existing.orderStatus === status) {
+    revalidatePath("/admin/orders");
+    return;
+  }
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: { orderStatus: status },
+    include: { items: { include: { product: true } }, shipment: true },
+  });
+
+  void import("@/lib/email/orders")
+    .then(({ notifyOrderStatusChanged }) =>
+      notifyOrderStatusChanged(updated, existing.orderStatus)
+    )
+    .catch((err) => console.error("[email] status notify:", err));
+
   revalidatePath("/admin/orders");
+  revalidatePath(`/orders/${id}`);
 }
 
 export async function upsertBlog(formData: FormData) {
@@ -226,6 +248,16 @@ export async function approveCancelRequest(orderId: string) {
     });
   });
 
+  const full = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: { include: { product: true } }, shipment: true },
+  });
+  if (full) {
+    void import("@/lib/email/orders")
+      .then(({ notifyCancelApproved }) => notifyCancelApproved(full))
+      .catch((err) => console.error("[email] cancel approved notify:", err));
+  }
+
   revalidatePath("/admin/orders");
   revalidatePath("/orders");
 }
@@ -238,7 +270,7 @@ export async function rejectCancelRequest(orderId: string) {
     throw new Error("No cancel request pending");
   }
 
-  await prisma.order.update({
+  const restored = await prisma.order.update({
     where: { id: orderId },
     data: {
       orderStatus: order.previousOrderStatus || "PAID",
@@ -246,7 +278,12 @@ export async function rejectCancelRequest(orderId: string) {
       cancelReason: null,
       previousOrderStatus: null,
     },
+    include: { items: { include: { product: true } }, shipment: true },
   });
+
+  void import("@/lib/email/orders")
+    .then(({ notifyCancelRejected }) => notifyCancelRejected(restored))
+    .catch((err) => console.error("[email] cancel rejected notify:", err));
 
   revalidatePath("/admin/orders");
   revalidatePath("/orders");
@@ -278,11 +315,23 @@ export async function syncShipmentTracking(orderId: string) {
     },
   });
 
+  let nextStatus = order.orderStatus;
   if (track.mappedOrderStatus && order.orderStatus !== "CANCELLED" && order.orderStatus !== "CANCEL_REQUESTED") {
     await prisma.order.update({
       where: { id: orderId },
       data: { orderStatus: track.mappedOrderStatus },
     });
+    nextStatus = track.mappedOrderStatus;
+  }
+
+  const full = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: { include: { product: true } }, shipment: true },
+  });
+  if (full) {
+    void import("@/lib/email/orders")
+      .then(({ notifyTrackingUpdated }) => notifyTrackingUpdated({ ...full, orderStatus: nextStatus }))
+      .catch((err) => console.error("[email] tracking notify:", err));
   }
 
   revalidatePath("/admin/orders");
