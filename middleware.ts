@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
+import { isAdminDevBypass } from "@/lib/auth/admin";
 
 export default auth((req) => {
-  const isAdminRoute = req.nextUrl.pathname.startsWith("/admin");
-  if (!isAdminRoute) {
+  const path = req.nextUrl.pathname;
+  const isAdminPage = path.startsWith("/admin");
+  const isAdminApi = path.startsWith("/api/admin");
+
+  if (!isAdminPage && !isAdminApi) {
     return NextResponse.next();
   }
 
-  if (process.env.ADMIN_DEV_BYPASS === "true") {
+  if (isAdminDevBypass()) {
     return NextResponse.next();
   }
 
   const role = req.auth?.user?.role;
   if (!req.auth?.user || role !== "ADMIN") {
+    if (isAdminApi) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/";
     url.searchParams.set("error", req.auth ? "unauthorized" : "login");
@@ -24,5 +30,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*"],
 };

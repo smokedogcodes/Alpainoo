@@ -38,7 +38,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID?.trim(),
       clientSecret: process.env.AUTH_GOOGLE_SECRET?.trim(),
-      allowDangerousEmailAccountLinking: true,
+      allowDangerousEmailAccountLinking: false,
     }),
   ],
   session: { strategy: "jwt" },
@@ -98,9 +98,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user?.id) {
-        const role = await ensureAdminRole(user.id, user.email);
-        const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-        (token as { role?: string }).role = role || dbUser?.role || "CUSTOMER";
+        await ensureAdminRole(user.id, user.email);
         token.sub = user.id;
         if (user.name) token.name = user.name;
         if (user.email) token.email = user.email;
@@ -112,6 +110,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         }
       }
+
+      // Re-read role from DB so demotions/promotions take effect without waiting for JWT expiry
+      if (token.sub) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.sub },
+          select: { role: true },
+        });
+        (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+      }
+
       return token;
     },
     async session({ session, token }) {

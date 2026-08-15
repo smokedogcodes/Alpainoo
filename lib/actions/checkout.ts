@@ -1,8 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { getRazorpay } from "@/lib/razorpay";
+import { getRazorpay, verifyPaymentSignature } from "@/lib/razorpay";
 import { auth } from "@/auth";
+import { CheckoutSchema, VerifyPaymentSchema } from "@/lib/validation";
 
 export type CheckoutInput = {
   email: string;
@@ -16,20 +17,35 @@ export type CheckoutInput = {
 };
 
 export async function createCheckoutOrder(input: CheckoutInput) {
-  if (!input.items.length) throw new Error("Cart is empty");
+  const parsed = CheckoutSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message || "Invalid checkout data");
+  }
+  const data = parsed.data;
+
+  // Aggregate quantities to prevent split-line stock bypass
+  const qtyByProduct = new Map<string, number>();
+  for (const item of data.items) {
+    qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) ?? 0) + item.quantity);
+  }
+  const productIds = Array.from(qtyByProduct.keys());
 
   const products = await prisma.product.findMany({
-    where: { id: { in: input.items.map((i) => i.productId) }, isHidden: false },
+    where: { id: { in: productIds }, isHidden: false },
   });
 
-  const lineItems = input.items.map((item) => {
-    const product = products.find((p) => p.id === item.productId);
+  const lineItems = productIds.map((productId) => {
+    const product = products.find((p) => p.id === productId);
+    const quantity = qtyByProduct.get(productId)!;
     if (!product) throw new Error("Product not found");
-    if (product.stock < item.quantity) throw new Error(`${product.title} is out of stock`);
-    return { product, quantity: item.quantity, price: product.sellingPrice };
+    if (product.stock < quantity) throw new Error(`${product.title} is out of stock`);
+    // Never trust client prices — always DB sellingPrice
+    return { product, quantity, price: product.sellingPrice };
   });
 
   const totalAmount = lineItems.reduce((s, l) => s + l.price * l.quantity, 0);
+  if (totalAmount <= 0) throw new Error("Invalid order total");
+
   const orderNumber = `EK${Date.now().toString().slice(-10)}`;
 
   let userId: string | undefined;
@@ -39,7 +55,7 @@ export async function createCheckoutOrder(input: CheckoutInput) {
       where: { email: session.user.email },
       create: {
         email: session.user.email,
-        name: session.user.name || input.name,
+        name: session.user.name || data.name,
         image: session.user.image || null,
         avatarUrl: session.user.image || null,
       },
@@ -49,12 +65,12 @@ export async function createCheckoutOrder(input: CheckoutInput) {
   }
 
   const shippingAddress = JSON.stringify({
-    name: input.name,
-    phone: input.phone,
-    address: input.address,
-    city: input.city,
-    state: input.state,
-    pincode: input.pincode,
+    name: data.name,
+    phone: data.phone,
+    address: data.address,
+    city: data.city,
+    state: data.state,
+    pincode: data.pincode,
   });
 
   const razorpay = getRazorpay();
@@ -75,7 +91,7 @@ export async function createCheckoutOrder(input: CheckoutInput) {
     data: {
       orderNumber,
       userId,
-      email: input.email,
+      email: data.email,
       totalAmount,
       paymentStatus: "PENDING",
       orderStatus: "PENDING",
@@ -102,12 +118,46 @@ export async function createCheckoutOrder(input: CheckoutInput) {
   };
 }
 
+/** Dev-only demo payment — blocked in production */
 export async function confirmMockPayment(orderId: string) {
-  // Dev-only path when Razorpay keys are absent
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Demo payment is not available in production");
+  }
   if (process.env.RAZORPAY_KEY_ID) {
     throw new Error("Use Razorpay checkout in production mode");
   }
+  if (!orderId || typeof orderId !== "string") throw new Error("Invalid order");
+
   const { fulfillPaidOrder } = await import("@/lib/fulfillment");
   await fulfillPaidOrder(orderId, `pay_mock_${Date.now()}`);
   return { ok: true };
+}
+
+/** Verify Razorpay checkout signature server-side, then fulfill */
+export async function verifyAndFulfillPayment(input: {
+  orderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}) {
+  const parsed = VerifyPaymentSchema.safeParse(input);
+  if (!parsed.success) throw new Error("Invalid payment payload");
+
+  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId } });
+  if (!order) throw new Error("Order not found");
+  if (order.razorpayOrderId !== parsed.data.razorpayOrderId) {
+    throw new Error("Order mismatch");
+  }
+  if (order.paymentStatus === "PAID") return { ok: true, alreadyPaid: true };
+
+  const valid = verifyPaymentSignature({
+    orderId: parsed.data.razorpayOrderId,
+    paymentId: parsed.data.razorpayPaymentId,
+    signature: parsed.data.razorpaySignature,
+  });
+  if (!valid) throw new Error("Invalid payment signature");
+
+  const { fulfillPaidOrder } = await import("@/lib/fulfillment");
+  await fulfillPaidOrder(order.id, parsed.data.razorpayPaymentId);
+  return { ok: true, alreadyPaid: false };
 }

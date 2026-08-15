@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseJsonArray } from "@/lib/utils";
+import { SearchQuerySchema } from "@/lib/validation";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") || "").trim();
+  const limited = await rateLimit(`search:${clientIp(req)}`, { limit: 60, windowMs: 60_000 });
+  if (!limited.success) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
 
-  if (q.length < 1) {
+  const { searchParams } = new URL(req.url);
+  const parsed = SearchQuerySchema.safeParse({ q: searchParams.get("q") || "" });
+  if (!parsed.success) {
     return NextResponse.json({ products: [] });
   }
+  const q = parsed.data.q;
 
   const products = await prisma.product.findMany({
     where: {

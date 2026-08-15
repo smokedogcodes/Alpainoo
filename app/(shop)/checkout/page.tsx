@@ -9,7 +9,7 @@ import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createCheckoutOrder, confirmMockPayment } from "@/lib/actions/checkout";
+import { createCheckoutOrder, confirmMockPayment, verifyAndFulfillPayment } from "@/lib/actions/checkout";
 
 declare global {
   interface Window {
@@ -62,10 +62,24 @@ export default function CheckoutPage() {
         description: result.orderNumber,
         order_id: result.razorpayOrderId,
         prefill: { email: form.email, name: form.name, contact: form.phone },
-        handler: async () => {
-          clear();
-          toast.success("Payment successful");
-          router.push(`/checkout/success?order=${result.orderNumber}`);
+        handler: async (response: {
+          razorpay_order_id: string;
+          razorpay_payment_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            await verifyAndFulfillPayment({
+              orderId: result.orderId,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            });
+            clear();
+            toast.success("Payment successful");
+            router.push(`/checkout/success?order=${result.orderNumber}`);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Payment verification failed");
+          }
         },
       });
       rzp.open();

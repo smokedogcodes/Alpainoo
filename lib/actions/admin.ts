@@ -1,48 +1,77 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
+import { requireAdmin } from "@/lib/auth/admin";
+import { OrderStatusSchema, sanitizeBlogHtml, sanitizeImageUrl } from "@/lib/validation";
+
+const ProductFormSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().trim().min(2).max(200),
+  brand: z.string().trim().min(1).max(100),
+  category: z.string().trim().min(1).max(100),
+  description: z.string().trim().min(1).max(10000),
+  volume: z.string().trim().max(50).optional(),
+  mrp: z.number().positive().max(1_000_000),
+  sellingPrice: z.number().positive().max(1_000_000),
+  stock: z.number().int().min(0).max(1_000_000),
+  sku: z.string().trim().min(1).max(64),
+  ingredients: z.string().max(5000).optional(),
+  usage: z.string().max(5000).optional(),
+  benefits: z.array(z.string().max(200)).max(50),
+  images: z.array(z.string().max(500)).max(20),
+  stockNote: z.string().max(200).optional(),
+});
 
 export async function upsertProduct(formData: FormData) {
-  const id = String(formData.get("id") || "");
-  const title = String(formData.get("title") || "");
-  const brand = String(formData.get("brand") || "");
-  const category = String(formData.get("category") || "");
-  const description = String(formData.get("description") || "");
-  const volume = String(formData.get("volume") || "");
-  const mrp = Number(formData.get("mrp") || 0);
-  const sellingPrice = Number(formData.get("sellingPrice") || 0);
-  const stock = Number(formData.get("stock") || 0);
-  const sku = String(formData.get("sku") || "");
-  const ingredients = String(formData.get("ingredients") || "");
-  const usage = String(formData.get("usage") || "");
-  const benefits = String(formData.get("benefits") || "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const images = String(formData.get("images") || "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  await requireAdmin();
+
+  const raw = {
+    id: String(formData.get("id") || "") || undefined,
+    title: String(formData.get("title") || ""),
+    brand: String(formData.get("brand") || ""),
+    category: String(formData.get("category") || ""),
+    description: String(formData.get("description") || ""),
+    volume: String(formData.get("volume") || ""),
+    mrp: Number(formData.get("mrp") || 0),
+    sellingPrice: Number(formData.get("sellingPrice") || 0),
+    stock: Number(formData.get("stock") || 0),
+    sku: String(formData.get("sku") || ""),
+    ingredients: String(formData.get("ingredients") || ""),
+    usage: String(formData.get("usage") || ""),
+    benefits: String(formData.get("benefits") || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    images: String(formData.get("images") || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(sanitizeImageUrl)
+      .filter(Boolean),
+    stockNote: String(formData.get("stockNote") || "") || undefined,
+  };
+
+  const parsed = ProductFormSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Invalid product");
+
+  const { id, mrp, sellingPrice, stock, title, images, stockNote, ...rest } = parsed.data;
+  if (sellingPrice > mrp) throw new Error("Selling price cannot exceed MRP");
+
   const discount = mrp > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
   const slug = slugify(title);
 
   const data = {
+    ...rest,
     title,
     slug,
-    brand,
-    category,
-    description,
-    volume,
     mrp,
     sellingPrice,
     discount,
     stock,
-    sku,
-    ingredients,
-    usage,
-    benefits: JSON.stringify(benefits),
+    benefits: JSON.stringify(rest.benefits),
     images: JSON.stringify(images.length ? images : ["/products/placeholder.jpg"]),
   };
 
@@ -54,7 +83,7 @@ export async function upsertProduct(formData: FormData) {
         data: {
           productId: id,
           change: stock - prev.stock,
-          note: String(formData.get("stockNote") || "Manual stock update"),
+          note: stockNote || "Manual stock update",
         },
       });
     }
@@ -70,12 +99,16 @@ export async function upsertProduct(formData: FormData) {
 }
 
 export async function toggleHideProduct(id: string, isHidden: boolean) {
+  await requireAdmin();
+  if (!id || typeof isHidden !== "boolean") throw new Error("Invalid input");
   await prisma.product.update({ where: { id }, data: { isHidden } });
   revalidatePath("/admin/products");
   revalidatePath("/products");
 }
 
 export async function deleteProduct(id: string) {
+  await requireAdmin();
+  if (!id) throw new Error("Invalid product");
   const items = await prisma.orderItem.count({ where: { productId: id } });
   if (items > 0) {
     await prisma.product.update({ where: { id }, data: { isHidden: true } });
@@ -87,21 +120,31 @@ export async function deleteProduct(id: string) {
 }
 
 export async function updateOrderStatus(id: string, orderStatus: string) {
-  await prisma.order.update({ where: { id }, data: { orderStatus } });
+  await requireAdmin();
+  const status = OrderStatusSchema.parse(orderStatus);
+  await prisma.order.update({ where: { id }, data: { orderStatus: status } });
   revalidatePath("/admin/orders");
 }
 
 export async function upsertBlog(formData: FormData) {
+  await requireAdmin();
+
   const id = String(formData.get("id") || "");
-  const title = String(formData.get("title") || "");
-  const excerpt = String(formData.get("excerpt") || "");
-  const content = String(formData.get("content") || "");
+  const title = String(formData.get("title") || "").trim();
+  const excerpt = String(formData.get("excerpt") || "").trim();
+  const content = sanitizeBlogHtml(String(formData.get("content") || ""));
   const published = formData.get("published") === "on";
   const tags = String(formData.get("tags") || "")
     .split(",")
     .map((t) => t.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 20);
+  if (title.length < 2 || title.length > 200) throw new Error("Invalid title");
+  if (excerpt.length > 500) throw new Error("Excerpt too long");
+
   const slug = slugify(title);
+  const coverRaw = String(formData.get("coverImage") || "");
+  const coverImage = sanitizeImageUrl(coverRaw) || null;
   const data = {
     title,
     slug,
@@ -109,7 +152,7 @@ export async function upsertBlog(formData: FormData) {
     content,
     published,
     tags: JSON.stringify(tags),
-    coverImage: String(formData.get("coverImage") || "") || null,
+    coverImage,
   };
   if (id) await prisma.blogPost.update({ where: { id }, data });
   else await prisma.blogPost.create({ data });
@@ -118,6 +161,8 @@ export async function upsertBlog(formData: FormData) {
 }
 
 export async function deleteBlog(id: string) {
+  await requireAdmin();
+  if (!id) throw new Error("Invalid blog");
   await prisma.blogPost.delete({ where: { id } });
   revalidatePath("/admin/blog");
   revalidatePath("/blog");
