@@ -4,8 +4,8 @@ import { isAdminDevBypass } from "@/lib/auth/admin";
 
 export default auth((req) => {
   const path = req.nextUrl.pathname;
-  const isAdminPage = path.startsWith("/admin");
-  const isAdminApi = path.startsWith("/api/admin");
+  const isAdminPage = path === "/admin" || path.startsWith("/admin/");
+  const isAdminApi = path === "/api/admin" || path.startsWith("/api/admin/");
 
   if (!isAdminPage && !isAdminApi) {
     return NextResponse.next();
@@ -20,8 +20,10 @@ export default auth((req) => {
     if (isAdminApi) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    // Block typed /admin URLs for non-admins — never render the dashboard
     const url = req.nextUrl.clone();
     url.pathname = "/";
+    url.search = "";
     url.searchParams.set("error", req.auth ? "unauthorized" : "login");
     return NextResponse.redirect(url);
   }
@@ -30,5 +32,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/admin", "/admin/:path*", "/api/admin", "/api/admin/:path*"],
 };

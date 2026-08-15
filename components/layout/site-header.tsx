@@ -34,8 +34,8 @@ export function SiteHeader({
 
   const user = session?.user;
   const signedIn = status === "authenticated" && Boolean(user?.email || userEmail);
-  const role = user?.role || userRole;
-  const isAdmin = role === "ADMIN";
+  // Prefer server role (re-read from DB on each request) so admin link appears after promotion
+  const isAdmin = userRole === "ADMIN" || user?.role === "ADMIN";
   const displayName =
     user?.name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
@@ -79,6 +79,15 @@ export function SiteHeader({
                     {item.label}
                   </Link>
                 ))}
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="mt-2 flex min-h-[44px] items-center gap-2 rounded-md bg-sage/10 px-3 text-sm font-semibold text-sage hover:bg-sage/15"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Admin Dashboard
+                  </Link>
+                )}
                 <div className="mt-4 border-t border-border pt-4">
                   {signedIn ? (
                     <>
@@ -91,15 +100,6 @@ export function SiteHeader({
                         <Package className="h-4 w-4" />
                         My Orders
                       </Link>
-                      {isAdmin && (
-                        <Link
-                          href="/admin"
-                          className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
-                        >
-                          <LayoutDashboard className="h-4 w-4" />
-                          Admin view
-                        </Link>
-                      )}
                       <button
                         type="button"
                         onClick={handleSignOut}
@@ -138,10 +138,28 @@ export function SiteHeader({
               {item.label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="text-xs font-semibold uppercase tracking-widest text-sage transition-colors hover:text-sage/80"
+            >
+              Admin Dashboard
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center justify-end gap-1 sm:gap-2 lg:min-w-44">
           <HeaderSearch />
+
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="hidden h-10 items-center gap-1.5 rounded-md bg-sage px-3 text-xs font-semibold uppercase tracking-wide text-white hover:bg-sage/90 sm:inline-flex"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Admin
+            </Link>
+          )}
 
           <div className="relative">
             {signedIn ? (
@@ -192,11 +210,11 @@ export function SiteHeader({
                         <Link
                           href="/admin"
                           role="menuitem"
-                          className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                          className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-sage/30 bg-sage/10 px-3 text-sm font-medium text-sage hover:bg-sage/15"
                           onClick={() => setAccountOpen(false)}
                         >
                           <LayoutDashboard className="h-4 w-4" />
-                          Admin view
+                          Admin Dashboard
                         </Link>
                       )}
                       <Button

@@ -17,14 +17,34 @@ declare module "next-auth" {
   }
 }
 
+declare module "next-auth/jwt" {
+  interface JWT {
+    role?: string;
+  }
+}
+
 /**
- * Optional first-time bootstrap only: if ADMIN_EMAIL matches and user is still CUSTOMER,
- * promote once. Ongoing role changes happen via DB /admin/users.
+ * Optional first-time bootstrap only: promote matching emails while still CUSTOMER.
+ * Ongoing role changes happen via DB /admin/users.
+ * Includes store-owner Google accounts that may differ from seed spelling.
  */
+function bootstrapAdminEmails(): Set<string> {
+  const fromEnv = [
+    process.env.ADMIN_EMAIL,
+    ...(process.env.ADMIN_EMAILS || "").split(","),
+  ];
+  const owners = ["elorakart1@gmail.com", "elolrakart1@gmail.com"];
+  return new Set(
+    [...fromEnv, ...owners]
+      .map((e) => e?.toLowerCase().trim())
+      .filter((e): e is string => Boolean(e))
+  );
+}
+
 async function ensureAdminRole(userId: string, email: string | null | undefined) {
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase()?.trim();
-  if (!adminEmail || !email) return;
-  if (email.toLowerCase() !== adminEmail) return;
+  if (!email) return;
+  const allowed = bootstrapAdminEmails();
+  if (!allowed.has(email.toLowerCase().trim())) return;
 
   const existing = await prisma.user.findUnique({
     where: { id: userId },
@@ -125,7 +145,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { id: token.sub },
           select: { role: true },
         });
-        (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+        token.role = dbUser?.role || "CUSTOMER";
       }
 
       return token;
@@ -133,7 +153,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.sub || "";
-        session.user.role = (token as { role?: string }).role || "CUSTOMER";
+        session.user.role = token.role || "CUSTOMER";
         if (token.name) session.user.name = token.name as string;
         if (token.email) session.user.email = token.email as string;
         if (token.picture) session.user.image = token.picture as string;

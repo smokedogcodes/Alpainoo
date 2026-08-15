@@ -320,21 +320,24 @@ async function main() {
   await prisma.product.deleteMany();
   await prisma.user.deleteMany();
 
-  // Primary admin in DB (adjustable later via /admin/users). Google OAuth links to this row by email.
-  await prisma.user.upsert({
-    where: { email: "elorakart1@gmail.com" },
-    create: {
-      email: "elorakart1@gmail.com",
-      name: "Elorakart Admin",
-      role: "ADMIN",
-      avatarUrl: null,
-    },
-    update: { role: "ADMIN", name: "Elorakart Admin" },
-  });
+  // Primary admin emails (Google OAuth must match one of these exactly).
+  const ownerEmails = ["elorakart1@gmail.com", "elolrakart1@gmail.com"];
+  for (const email of ownerEmails) {
+    await prisma.user.upsert({
+      where: { email },
+      create: {
+        email,
+        name: "Elorakart Admin",
+        role: "ADMIN",
+        avatarUrl: null,
+      },
+      update: { role: "ADMIN", name: "Elorakart Admin" },
+    });
+  }
 
   // Optional bootstrap admin from ADMIN_EMAIL if different
   const bootstrap = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
-  if (bootstrap && bootstrap !== "elorakart1@gmail.com") {
+  if (bootstrap && !ownerEmails.includes(bootstrap)) {
     await prisma.user.upsert({
       where: { email: bootstrap },
       create: {

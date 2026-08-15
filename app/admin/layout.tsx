@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { LayoutDashboard, Package, ShoppingBag, FileText, BarChart3, Menu, Users } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { auth } from "@/auth";
+import { isAdminDevBypass } from "@/lib/auth/admin";
 
 const links = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
@@ -25,11 +28,25 @@ function NavLinks() {
           {label}
         </Link>
       ))}
+      <Link
+        href="/"
+        className="mt-4 flex min-h-[44px] items-center gap-3 rounded-md px-3 text-sm text-muted hover:bg-off-white"
+      >
+        ← Back to shop
+      </Link>
     </nav>
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Defense in depth: never render admin UI unless session role is ADMIN
+  if (!isAdminDevBypass()) {
+    const session = await auth();
+    if (!session?.user?.id || session.user.role !== "ADMIN") {
+      redirect(session?.user ? "/?error=unauthorized" : "/?error=login");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-off-white">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-cream px-4 py-3 lg:hidden">
