@@ -1,0 +1,2 @@
+﻿# Deploy note
+Commits for Vercel must use a GitHub-linked author email.
