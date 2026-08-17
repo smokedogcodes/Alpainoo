@@ -109,7 +109,7 @@ Respond with ONLY valid JSON:
   let models = defaultModelCandidates();
   const discovered = await listGenerateContentModels(key);
   if (discovered.length) {
-    models = [...new Set([...models, ...discovered])];
+    models = Array.from(new Set([...models, ...discovered]));
   }
 
   let lastError: unknown;
