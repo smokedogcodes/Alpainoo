@@ -76,12 +76,13 @@ In the Vercel project → **Settings → Environment Variables**, add these for 
 | `ADMIN_DEV_BYPASS` | `true` (so you can open `/admin` without Google for the demo) |
 | `RESEND_API_KEY` | From https://resend.com (required for order emails) |
 | `EMAIL_FROM` | e.g. `Elorakart <onboarding@resend.dev>` or a verified domain sender |
+| `GEMINI_API_KEY` | Google AI Studio / Gemini API key for the support chatbot |
 
 Optional for demo (can leave empty):
 
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
 - Razorpay / Shiprocket keys
-
+- Without `GEMINI_API_KEY`, chat still answers FAQs from the knowledge base and can create tickets
 Then click **Deploy**.
 
 ---

@@ -48,6 +48,18 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
 
   if (updated.alreadyPaid) return updated.order;
 
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "payment",
+      action: "ORDER_PAID",
+      message: `Order ${updated.order.orderNumber} paid`,
+      entityType: "Order",
+      entityId: updated.order.id,
+      actorEmail: updated.order.email,
+      meta: { orderNumber: updated.order.orderNumber, totalAmount: updated.order.totalAmount },
+    })
+  );
+
   // Notify once on first successful payment (fail-soft)
   void import("@/lib/email/orders")
     .then(({ notifyOrderPaid }) => notifyOrderPaid(updated.order))
@@ -106,6 +118,16 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
     });
   } catch (err) {
     console.error("Shiprocket fulfillment deferred/failed:", err);
+    void import("@/lib/logging/system-log").then(({ logError }) =>
+      logError({
+        category: "stock",
+        action: "SHIPROCKET_FAILED",
+        message: err instanceof Error ? err.message : "Shiprocket fulfillment failed",
+        entityType: "Order",
+        entityId: updated.order.id,
+        meta: { orderNumber: updated.order.orderNumber },
+      })
+    );
   }
 
   return updated.order;

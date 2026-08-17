@@ -1,6 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LayoutDashboard, Package, ShoppingBag, FileText, BarChart3, Menu, Users } from "lucide-react";
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingBag,
+  FileText,
+  BarChart3,
+  Menu,
+  Users,
+  ScrollText,
+  MessageSquare,
+  BookOpen,
+} from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/auth";
@@ -11,8 +22,11 @@ const links = [
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/tickets", label: "Tickets", icon: MessageSquare },
+  { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/admin/blog", label: "Blog", icon: FileText },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/logs", label: "Audit logs", icon: ScrollText },
 ];
 
 function NavLinks() {

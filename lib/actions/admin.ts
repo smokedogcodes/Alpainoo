@@ -76,6 +76,7 @@ export async function upsertProduct(formData: FormData) {
     images: JSON.stringify(images.length ? images : ["/products/placeholder.jpg"]),
   };
 
+  let productId = id;
   if (id) {
     const prev = await prisma.product.findUnique({ where: { id } });
     await prisma.product.update({ where: { id }, data });
@@ -90,6 +91,7 @@ export async function upsertProduct(formData: FormData) {
     }
   } else {
     const created = await prisma.product.create({ data });
+    productId = created.id;
     await prisma.stockLog.create({
       data: { productId: created.id, change: stock, note: "Initial stock" },
     });
@@ -97,6 +99,17 @@ export async function upsertProduct(formData: FormData) {
 
   revalidatePath("/admin/products");
   revalidatePath("/products");
+
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "admin",
+      action: id ? "PRODUCT_UPDATED" : "PRODUCT_CREATED",
+      message: id ? `Product updated: ${title}` : `Product created: ${title}`,
+      entityType: "Product",
+      entityId: productId,
+      meta: { sku: rest.sku, stock },
+    })
+  );
 }
 
 export async function toggleHideProduct(id: string, isHidden: boolean) {
@@ -144,6 +157,18 @@ export async function updateOrderStatus(id: string, orderStatus: string) {
       notifyOrderStatusChanged(updated, existing.orderStatus)
     )
     .catch((err) => console.error("[email] status notify:", err));
+
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "admin",
+      action: "ORDER_STATUS_CHANGED",
+      message: `${existing.orderNumber}: ${existing.orderStatus} → ${status}`,
+      entityType: "Order",
+      entityId: id,
+      actorEmail: existing.email,
+      meta: { from: existing.orderStatus, to: status },
+    })
+  );
 
   revalidatePath("/admin/orders");
   revalidatePath(`/orders/${id}`);
@@ -206,6 +231,18 @@ export async function setUserRole(userId: string, role: "ADMIN" | "CUSTOMER") {
   }
 
   await prisma.user.update({ where: { id: userId }, data: { role } });
+
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "admin",
+      action: "USER_ROLE_CHANGED",
+      message: `User role set to ${role}`,
+      entityType: "User",
+      entityId: userId,
+      meta: { role },
+    })
+  );
+
   revalidatePath("/admin/users");
 }
 
@@ -258,6 +295,17 @@ export async function approveCancelRequest(orderId: string) {
       .catch((err) => console.error("[email] cancel approved notify:", err));
   }
 
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "admin",
+      action: "CANCEL_APPROVED",
+      message: `Cancel approved for ${order.orderNumber}`,
+      entityType: "Order",
+      entityId: orderId,
+      actorEmail: order.email,
+    })
+  );
+
   revalidatePath("/admin/orders");
   revalidatePath("/orders");
 }
@@ -284,6 +332,18 @@ export async function rejectCancelRequest(orderId: string) {
   void import("@/lib/email/orders")
     .then(({ notifyCancelRejected }) => notifyCancelRejected(restored))
     .catch((err) => console.error("[email] cancel rejected notify:", err));
+
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "admin",
+      action: "CANCEL_REJECTED",
+      message: `Cancel rejected for ${order.orderNumber}`,
+      entityType: "Order",
+      entityId: orderId,
+      actorEmail: order.email,
+      meta: { restoredStatus: restored.orderStatus },
+    })
+  );
 
   revalidatePath("/admin/orders");
   revalidatePath("/orders");

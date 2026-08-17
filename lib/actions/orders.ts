@@ -68,6 +68,18 @@ export async function requestOrderCancel(orderId: string, reason: string) {
     )
     .catch((err) => console.error("[email] cancel request notify:", err));
 
+  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+    logSuccess({
+      category: "order",
+      action: "CANCEL_REQUESTED",
+      message: `Cancel requested for ${order.orderNumber}`,
+      entityType: "Order",
+      entityId: order.id,
+      actorEmail: order.email,
+      meta: { reason: parsed.data.reason },
+    })
+  );
+
   revalidatePath("/orders");
   revalidatePath(`/orders/${order.id}`);
   revalidatePath("/admin/orders");

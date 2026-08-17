@@ -54,27 +54,51 @@ export async function POST(req: Request) {
   await mkdir(uploadDir, { recursive: true });
 
   const urls: string[] = [];
-  for (const file of files) {
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: `File too large: ${file.name}` }, { status: 400 });
+  try {
+    for (const file of files) {
+      if (file.size > MAX_BYTES) {
+        return NextResponse.json({ error: `File too large: ${file.name}` }, { status: 400 });
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const detected = detectMime(buffer);
+      if (!detected || !ALLOWED.has(detected)) {
+        return NextResponse.json({ error: `Unsupported or spoofed type: ${file.name}` }, { status: 400 });
+      }
+      const ext =
+        detected === "image/jpeg"
+          ? "jpg"
+          : detected === "image/png"
+            ? "png"
+            : detected === "image/webp"
+              ? "webp"
+              : "gif";
+      const filename = `${randomUUID()}.${ext}`;
+      await writeFile(path.join(uploadDir, filename), buffer);
+      urls.push(`/uploads/products/${filename}`);
     }
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const detected = detectMime(buffer);
-    if (!detected || !ALLOWED.has(detected)) {
-      return NextResponse.json({ error: `Unsupported or spoofed type: ${file.name}` }, { status: 400 });
-    }
-    const ext =
-      detected === "image/jpeg"
-        ? "jpg"
-        : detected === "image/png"
-          ? "png"
-          : detected === "image/webp"
-            ? "webp"
-            : "gif";
-    const filename = `${randomUUID()}.${ext}`;
-    await writeFile(path.join(uploadDir, filename), buffer);
-    urls.push(`/uploads/products/${filename}`);
-  }
 
-  return NextResponse.json({ urls });
+    const { logSuccess } = await import("@/lib/logging/system-log");
+    await logSuccess({
+      category: "admin",
+      action: "UPLOAD_SUCCESS",
+      message: `Uploaded ${urls.length} file(s)`,
+      actorUserId: admin.id,
+      path: "/api/upload",
+      method: "POST",
+      meta: { count: urls.length },
+    });
+
+    return NextResponse.json({ urls });
+  } catch (err) {
+    const { logError } = await import("@/lib/logging/system-log");
+    await logError({
+      category: "api",
+      action: "UPLOAD_FAILED",
+      message: err instanceof Error ? err.message : "Upload failed",
+      actorUserId: admin.id,
+      path: "/api/upload",
+      method: "POST",
+    });
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+  }
 }

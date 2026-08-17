@@ -17,6 +17,9 @@ npm run dev
 
 - Storefront: http://localhost:3000  
 - Admin: http://localhost:3000/admin (`ADMIN_DEV_BYPASS=true` until Google OAuth is configured)
+- Support chat: floating widget on shop pages (Gemini + FAQ knowledge base). Set `GEMINI_API_KEY`.
+- Admin → **Tickets** / **Knowledge** for ticket TAT replies and FAQ management.
+- Seed FAQs without wiping data: `npx tsx scripts/seed-faqs.ts`
 
 ## Hostinger setup
 

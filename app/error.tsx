@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { logClientError } from "@/lib/actions/log-client-error";
 
 export default function Error({
   error,
@@ -13,6 +14,11 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+    void logClientError({
+      message: error.message || "Unhandled UI error",
+      digest: error.digest,
+      path: typeof window !== "undefined" ? window.location.pathname : undefined,
+    });
   }, [error]);
 
   return (

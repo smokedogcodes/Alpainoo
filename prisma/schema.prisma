@@ -11,18 +11,20 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String          @id @default(cuid())
   name          String?
-  email         String    @unique
+  email         String          @unique
   emailVerified DateTime?
   image         String?
-  role          String    @default("CUSTOMER")
+  role          String          @default("CUSTOMER")
   avatarUrl     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
   accounts      Account[]
   sessions      Session[]
   orders        Order[]
+  chatSessions  ChatSession[]
+  tickets       SupportTicket[]
 }
 
 model Account {
@@ -159,4 +161,107 @@ model BlogPost {
   published  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model ChatSession {
+  id        String          @id @default(cuid())
+  userId    String?
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestKey  String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  messages  ChatMessage[]
+  tickets   SupportTicket[]
+
+  @@index([userId])
+  @@index([guestKey])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  intent    String?
+  source    String?
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model KnowledgeArticle {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  question  String
+  answer    String
+  keywords  String   @default("[]")
+  category  String   @default("GENERAL")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([category])
+}
+
+model SupportTicket {
+  id           String       @id @default(cuid())
+  ticketNumber String       @unique
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email        String
+  name         String?
+  subject      String
+  description  String
+  status       String       @default("OPEN")
+  category     String       @default("GENERAL")
+  tatHours     Int          @default(24)
+  dueAt        DateTime
+  sessionId    String?
+  session      ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  adminReply   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([dueAt])
+}
+
+model SystemLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  level       String
+  category    String
+  action      String
+  message     String
+  entityType  String?
+  entityId    String?
+  actorUserId String?
+  actorEmail  String?
+  path        String?
+  method      String?
+  meta        String   @default("{}")
+
+  @@index([level, createdAt])
+  @@index([category, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model DbAuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  tableName  String
+  operation  String
+  rowId      String?
+  oldData    String?
+  newData    String?
+
+  @@index([tableName, createdAt])
+  @@index([createdAt])
 }

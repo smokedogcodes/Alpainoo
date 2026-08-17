@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyRazorpayWebhookSignature } from "@/lib/razorpay";
 import { fulfillPaidOrder } from "@/lib/fulfillment";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { logError, logSuccess, logWarn } from "@/lib/logging/system-log";
 
 export async function POST(req: Request) {
   const limited = await rateLimit(`webhook:rzp:${clientIp(req)}`, {
@@ -15,6 +16,13 @@ export async function POST(req: Request) {
 
   if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
     console.error("RAZORPAY_WEBHOOK_SECRET is not configured");
+    await logError({
+      category: "api",
+      action: "WEBHOOK_NOT_CONFIGURED",
+      message: "RAZORPAY_WEBHOOK_SECRET is not configured",
+      path: "/api/webhooks/razorpay",
+      method: "POST",
+    });
     return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
   }
 
@@ -23,6 +31,13 @@ export async function POST(req: Request) {
 
   const valid = verifyRazorpayWebhookSignature(body, signature);
   if (!valid) {
+    await logWarn({
+      category: "api",
+      action: "WEBHOOK_INVALID_SIGNATURE",
+      message: "Invalid Razorpay webhook signature",
+      path: "/api/webhooks/razorpay",
+      method: "POST",
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -36,6 +51,13 @@ export async function POST(req: Request) {
   try {
     event = JSON.parse(body);
   } catch {
+    await logError({
+      category: "api",
+      action: "WEBHOOK_INVALID_JSON",
+      message: "Invalid webhook JSON",
+      path: "/api/webhooks/razorpay",
+      method: "POST",
+    });
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
@@ -47,15 +69,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, skipped: true });
     }
 
-    const order = await prisma.order.findFirst({ where: { razorpayOrderId } });
-    if (!order) {
-      return NextResponse.json({ ok: true, skipped: true });
+    try {
+      const order = await prisma.order.findFirst({ where: { razorpayOrderId } });
+      if (!order) {
+        return NextResponse.json({ ok: true, skipped: true });
+      }
+      if (order.paymentStatus === "PAID") {
+        return NextResponse.json({ ok: true, alreadyPaid: true });
+      }
+      await fulfillPaidOrder(order.id, paymentId);
+      await logSuccess({
+        category: "payment",
+        action: "WEBHOOK_FULFILLED",
+        message: `Webhook fulfilled ${order.orderNumber}`,
+        entityType: "Order",
+        entityId: order.id,
+        path: "/api/webhooks/razorpay",
+        method: "POST",
+        meta: { event: event.event },
+      });
+    } catch (err) {
+      await logError({
+        category: "payment",
+        action: "WEBHOOK_FULFILL_FAILED",
+        message: err instanceof Error ? err.message : "Webhook fulfill failed",
+        path: "/api/webhooks/razorpay",
+        method: "POST",
+        meta: { razorpayOrderId },
+      });
+      return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 });
     }
-    // Idempotent: already PAID → 200 without side effects
-    if (order.paymentStatus === "PAID") {
-      return NextResponse.json({ ok: true, alreadyPaid: true });
-    }
-    await fulfillPaidOrder(order.id, paymentId);
   }
 
   return NextResponse.json({ ok: true });

@@ -119,6 +119,19 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       },
     });
 
+    void import("@/lib/logging/system-log").then(({ logSuccess }) =>
+      logSuccess({
+        category: "checkout",
+        action: "ORDER_CREATED",
+        message: `Order ${order.orderNumber} created`,
+        entityType: "Order",
+        entityId: order.id,
+        actorUserId: userId || null,
+        actorEmail: data.email,
+        meta: { totalAmount, itemCount: lineItems.length, mock: !razorpay },
+      })
+    );
+
     return {
       ok: true,
       orderId: order.id,
@@ -130,10 +143,17 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       mock: !razorpay,
     };
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Checkout failed",
-    };
+    const message = err instanceof Error ? err.message : "Checkout failed";
+    void import("@/lib/logging/system-log").then(({ logError }) =>
+      logError({
+        category: "checkout",
+        action: "ORDER_CREATE_FAILED",
+        message,
+        actorEmail: data.email,
+        meta: { email: data.email },
+      })
+    );
+    return { ok: false, error: message };
   }
 }
 
@@ -154,7 +174,17 @@ export async function confirmMockPayment(orderId: string): Promise<{ ok: true } 
     await fulfillPaidOrder(orderId, `pay_mock_${Date.now()}`);
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Payment failed" };
+    const message = err instanceof Error ? err.message : "Payment failed";
+    void import("@/lib/logging/system-log").then(({ logError }) =>
+      logError({
+        category: "payment",
+        action: "MOCK_PAYMENT_FAILED",
+        message,
+        entityType: "Order",
+        entityId: orderId,
+      })
+    );
+    return { ok: false, error: message };
   }
 }
 
@@ -181,12 +211,33 @@ export async function verifyAndFulfillPayment(input: {
       paymentId: parsed.data.razorpayPaymentId,
       signature: parsed.data.razorpaySignature,
     });
-    if (!valid) return { ok: false, error: "Invalid payment signature" };
+    if (!valid) {
+      void import("@/lib/logging/system-log").then(({ logError }) =>
+        logError({
+          category: "payment",
+          action: "SIGNATURE_INVALID",
+          message: "Invalid payment signature",
+          entityType: "Order",
+          entityId: parsed.data.orderId,
+        })
+      );
+      return { ok: false, error: "Invalid payment signature" };
+    }
 
     const { fulfillPaidOrder } = await import("@/lib/fulfillment");
     await fulfillPaidOrder(order.id, parsed.data.razorpayPaymentId);
     return { ok: true, alreadyPaid: false };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Payment verification failed" };
+    const message = err instanceof Error ? err.message : "Payment verification failed";
+    void import("@/lib/logging/system-log").then(({ logError }) =>
+      logError({
+        category: "payment",
+        action: "VERIFY_FAILED",
+        message,
+        entityType: "Order",
+        entityId: input.orderId,
+      })
+    );
+    return { ok: false, error: message };
   }
 }

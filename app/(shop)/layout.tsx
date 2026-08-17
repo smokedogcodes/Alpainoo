@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { ShopAuthBanner } from "@/components/layout/shop-auth-banner";
+import { SupportChat } from "@/components/chat/support-chat";
 
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -17,6 +18,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
       </Suspense>
       <main className="flex-1">{children}</main>
       <SiteFooter />
+      <SupportChat isLoggedIn={Boolean(session?.user)} />
     </div>
   );
 }

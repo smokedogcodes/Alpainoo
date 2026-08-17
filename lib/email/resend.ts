@@ -63,11 +63,29 @@ export async function sendTransactionalEmail(input: {
     });
     if (error) {
       console.error("[email] Resend error:", error);
+      void import("@/lib/logging/system-log").then(({ logError }) =>
+        logError({
+          category: "email",
+          action: "SEND_FAILED",
+          message: typeof error === "object" && error && "message" in error
+            ? String((error as { message: string }).message)
+            : "Resend send failed",
+          meta: { to, subject: input.subject },
+        })
+      );
       return { ok: false as const, error };
     }
     return { ok: true as const, id: data?.id };
   } catch (err) {
     console.error("[email] send failed:", err);
+    void import("@/lib/logging/system-log").then(({ logError }) =>
+      logError({
+        category: "email",
+        action: "SEND_EXCEPTION",
+        message: err instanceof Error ? err.message : "Email send exception",
+        meta: { to: input.to, subject: input.subject },
+      })
+    );
     return { ok: false as const, error: err };
   }
 }
