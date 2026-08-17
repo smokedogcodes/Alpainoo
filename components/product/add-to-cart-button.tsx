@@ -22,7 +22,7 @@ export function AddToCartButton({ product }: { product: Product }) {
     <>
       <Button
         size="lg"
-        className="w-full"
+        className="hidden w-full lg:inline-flex"
         disabled={product.stock <= 0}
         onClick={() => {
           addItem({

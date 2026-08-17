@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 
 type Props = {
   brands: string[];
@@ -113,6 +114,7 @@ function FiltersForm({ brands, categories, current, onDone }: Props & { onDone?:
 
 export function ProductFilters(props: Props) {
   const [open, setOpen] = useState(false);
+  useDismissOnRouteChange(() => setOpen(false));
   return (
     <>
       <div className="lg:hidden mb-4">

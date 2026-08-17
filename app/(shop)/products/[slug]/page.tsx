@@ -25,7 +25,7 @@ export default async function ProductDetailPage({ params }: Props) {
   const images = parseJsonArray(product.images);
 
   return (
-    <div className="mx-auto max-w-store px-4 py-8 md:px-6">
+    <div className="mx-auto max-w-store px-4 py-8 pb-28 md:px-6 lg:pb-8">
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <ProductGallery title={product.title} images={images} brand={product.brand} />
         <div>

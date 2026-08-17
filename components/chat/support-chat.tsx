@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MessageCircle, X, Send } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -20,6 +22,9 @@ type ChatResponse = {
 };
 
 export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
+  const pathname = usePathname();
+  const onProductDetail =
+    Boolean(pathname?.startsWith("/products/")) && pathname !== "/products";
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,10 +40,33 @@ export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
   const [ticketCategory, setTicketCategory] = useState<"GENERAL" | "ORDER">("GENERAL");
   const [requireLogin, setRequireLogin] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useDismissOnRouteChange(() => setOpen(false));
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onPointer(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      const fab = document.getElementById("support-chat-fab");
+      if (fab?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
 
   async function send(message?: string) {
     const text = (message ?? input).trim();
@@ -107,16 +135,30 @@ export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <>
       <button
+        id="support-chat-fab"
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-sage text-white shadow-lg transition hover:bg-sage-muted"
+        className={cn(
+          "fixed right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-sage text-white shadow-lg transition hover:bg-sage-muted",
+          onProductDetail
+            ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
+            : "bottom-[calc(1.25rem+env(safe-area-inset-bottom))]",
+        )}
         aria-label={open ? "Close chat" : "Open support chat"}
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[min(560px,70vh)] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-cream shadow-2xl">
+        <div
+          ref={panelRef}
+          className={cn(
+            "fixed right-5 z-[60] flex h-[min(560px,70vh)] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-cream shadow-2xl",
+            onProductDetail
+              ? "bottom-[calc(10.25rem+env(safe-area-inset-bottom))]"
+              : "bottom-[calc(6rem+env(safe-area-inset-bottom))]",
+          )}
+        >
           <div className="border-b border-border/50 bg-sage px-4 py-3 text-white">
             <p className="font-display text-lg">Elorakart Support</p>
             <p className="text-xs text-white/80">FAQs · products · your orders</p>

@@ -1,20 +1,31 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product/product-image";
 import { useCart } from "@/lib/cart";
 import { formatINR } from "@/lib/utils";
+import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 
 export function CartSheet({ children }: { children: React.ReactNode }) {
   const { items, updateQty, removeItem, subtotal } = useCart();
+  const [open, setOpen] = useState(false);
+  useDismissOnRouteChange(() => setOpen(false));
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent className="flex flex-col">
+      <SheetContent className="flex flex-col overflow-hidden">
         <SheetHeader>
           <SheetTitle>Shopping Cart</SheetTitle>
         </SheetHeader>
@@ -30,9 +41,14 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="flex flex-1 flex-col gap-2">
                     <div className="flex justify-between gap-2">
-                      <Link href={`/products/${item.slug}`} className="text-sm font-medium leading-snug">
-                        {item.title}
-                      </Link>
+                      <SheetClose asChild>
+                        <Link
+                          href={`/products/${item.slug}`}
+                          className="text-sm font-medium leading-snug"
+                        >
+                          {item.title}
+                        </Link>
+                      </SheetClose>
                       <button
                         type="button"
                         onClick={() => removeItem(item.productId)}
@@ -68,14 +84,16 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
             </ul>
           )}
         </div>
-        <div className="border-t border-border p-6 space-y-3">
+        <div className="space-y-3 border-t border-border p-6">
           <div className="flex justify-between text-sm">
             <span>Subtotal:</span>
             <span className="font-semibold">{formatINR(subtotal())}</span>
           </div>
-          <Button asChild variant="terracotta" className="w-full" disabled={!items.length}>
-            <Link href="/checkout">Proceed to Checkout</Link>
-          </Button>
+          <SheetClose asChild>
+            <Button asChild variant="terracotta" className="w-full" disabled={!items.length}>
+              <Link href="/checkout">Proceed to Checkout</Link>
+            </Button>
+          </SheetClose>
           <p className="text-center text-xs text-muted">Shipping & taxes calculated at checkout.</p>
         </div>
       </SheetContent>

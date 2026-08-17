@@ -1,14 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useCart } from "@/lib/cart";
 import { CartSheet } from "@/components/cart/cart-sheet";
 import { HeaderSearch } from "@/components/layout/header-search";
+import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 import { useRouter } from "next/navigation";
 
 const nav = [
@@ -29,12 +38,29 @@ export function SiteHeader({
 }) {
   const { data: session, status } = useSession();
   const count = useCart((s) => s.items.reduce((n, i) => n + i.quantity, 0));
+  const [navOpen, setNavOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
   const router = useRouter();
+
+  useDismissOnRouteChange(() => {
+    setNavOpen(false);
+    setAccountOpen(false);
+  });
+
+  useEffect(() => setPortalReady(true), []);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAccountOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [accountOpen]);
 
   const user = session?.user;
   const signedIn = status === "authenticated" && Boolean(user?.email || userEmail);
-  // Prefer server role (re-read from DB on each request) so admin link appears after promotion
   const isAdmin = userRole === "ADMIN" || user?.role === "ADMIN";
   const displayName =
     user?.name?.split(" ")[0] ||
@@ -44,11 +70,13 @@ export function SiteHeader({
 
   async function handleSignIn() {
     setAccountOpen(false);
+    setNavOpen(false);
     await signIn("google", { callbackUrl: "/" });
   }
 
   async function handleSignOut() {
     setAccountOpen(false);
+    setNavOpen(false);
     await signOut({ callbackUrl: "/" });
     router.refresh();
   }
@@ -57,13 +85,13 @@ export function SiteHeader({
     <header className="glass-nav sticky top-0 z-40 border-b border-border/50">
       <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-3.5 md:px-6">
         <div className="flex items-center gap-2 lg:w-44">
-          <Sheet>
+          <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col bg-cream p-0">
+            <SheetContent side="left" className="flex flex-col overflow-y-auto bg-cream p-0">
               <SheetHeader>
                 <SheetTitle className="font-display text-2xl tracking-tight text-sage">
                   Elorakart
@@ -71,35 +99,40 @@ export function SiteHeader({
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-4 pb-8">
                 {nav.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex min-h-[44px] items-center rounded-md px-3 text-sm uppercase tracking-widest text-muted hover:bg-off-white hover:text-sage"
-                  >
-                    {item.label}
-                  </Link>
+                  <SheetClose asChild key={item.href}>
+                    <Link
+                      href={item.href}
+                      className="flex min-h-[44px] items-center rounded-md px-3 text-sm uppercase tracking-widest text-muted hover:bg-off-white hover:text-sage"
+                    >
+                      {item.label}
+                    </Link>
+                  </SheetClose>
                 ))}
                 {isAdmin && (
-                  <Link
-                    href="/admin"
-                    className="mt-2 flex min-h-[44px] items-center gap-2 rounded-md bg-sage/10 px-3 text-sm font-semibold text-sage hover:bg-sage/15"
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    Admin Dashboard
-                  </Link>
+                  <SheetClose asChild>
+                    <Link
+                      href="/admin"
+                      className="mt-2 flex min-h-[44px] items-center gap-2 rounded-md bg-sage/10 px-3 text-sm font-semibold text-sage hover:bg-sage/15"
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Admin Dashboard
+                    </Link>
+                  </SheetClose>
                 )}
                 <div className="mt-4 border-t border-border pt-4">
                   {signedIn ? (
                     <>
                       <p className="px-3 text-sm font-medium">{displayName}</p>
                       <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
-                      <Link
-                        href="/orders"
-                        className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
-                      >
-                        <Package className="h-4 w-4" />
-                        My Orders
-                      </Link>
+                      <SheetClose asChild>
+                        <Link
+                          href="/orders"
+                          className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                        >
+                          <Package className="h-4 w-4" />
+                          My Orders
+                        </Link>
+                      </SheetClose>
                       <button
                         type="button"
                         onClick={handleSignOut}
@@ -185,12 +218,17 @@ export function SiteHeader({
                 </Button>
                 {accountOpen && (
                   <>
-                    <button
-                      type="button"
-                      className="fixed inset-0 z-40 cursor-default"
-                      aria-label="Close account menu"
-                      onClick={() => setAccountOpen(false)}
-                    />
+                    {portalReady
+                      ? createPortal(
+                          <button
+                            type="button"
+                            className="fixed inset-0 z-[45] cursor-default"
+                            aria-label="Close account menu"
+                            onClick={() => setAccountOpen(false)}
+                          />,
+                          document.body,
+                        )
+                      : null}
                     <div
                       role="menu"
                       className="absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"

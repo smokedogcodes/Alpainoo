@@ -7,6 +7,7 @@ import { Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 import { formatINR } from "@/lib/utils";
 
 type Suggestion = {
@@ -34,6 +35,8 @@ export function HeaderSearch() {
     setOpen(false);
     setActiveIndex(-1);
   }, []);
+
+  useDismissOnRouteChange(close);
 
   const goSearch = useCallback(
     (term: string) => {
