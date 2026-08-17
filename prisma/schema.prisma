@@ -265,3 +265,78 @@ model DbAuditLog {
   @@index([tableName, createdAt])
   @@index([createdAt])
 }
+
+// Per-table transaction audit logs (populated by PostgreSQL triggers)
+model OrderAudit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  operation String
+  orderId   String?
+  oldData   String?
+  newData   String?
+
+  @@index([orderId, createdAt])
+  @@index([createdAt])
+}
+
+model OrderItemAudit {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  operation   String
+  orderItemId String?
+  orderId     String?
+  oldData     String?
+  newData     String?
+
+  @@index([orderId, createdAt])
+  @@index([createdAt])
+}
+
+model ShipmentAudit {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  operation  String
+  shipmentId String?
+  orderId    String?
+  oldData    String?
+  newData    String?
+
+  @@index([orderId, createdAt])
+  @@index([createdAt])
+}
+
+model ProductAudit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  operation String
+  productId String?
+  oldData   String?
+  newData   String?
+
+  @@index([productId, createdAt])
+  @@index([createdAt])
+}
+
+model UserAudit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  operation String
+  userId    String?
+  oldData   String?
+  newData   String?
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model SupportTicketAudit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  operation String
+  ticketId  String?
+  oldData   String?
+  newData   String?
+
+  @@index([ticketId, createdAt])
+  @@index([createdAt])
+}
