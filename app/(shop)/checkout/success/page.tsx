@@ -1,21 +1,58 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { auth } from "@/auth";
+import { ReceiptPrinterExperience } from "@/components/checkout/receipt-printer-experience";
+import { prisma } from "@/lib/prisma";
 
-export default function CheckoutSuccessPage({
+export default async function CheckoutSuccessPage({
   searchParams,
 }: {
   searchParams: { order?: string };
 }) {
-  return (
-    <div className="mx-auto max-w-lg px-4 py-20 text-center">
-      <h1 className="font-display text-4xl">Thank you</h1>
-      <p className="mt-3 text-muted">
-        Your order {searchParams.order ? <strong>{searchParams.order}</strong> : ""} has been placed.
-        You will receive shipping updates once the courier picks it up.
-      </p>
-      <Button asChild className="mt-8">
-        <Link href="/products">Continue shopping</Link>
-      </Button>
-    </div>
-  );
+  const orderNumber = searchParams.order?.trim() || "your order";
+  const session = await auth();
+
+  let receipt = {
+    orderNumber,
+  } as {
+    orderId?: string;
+    orderNumber: string;
+    createdAt?: string;
+    totalAmount?: number;
+    paymentStatus?: string;
+    items?: { title: string; quantity: number; price: number }[];
+  };
+
+  if (searchParams.order && (session?.user?.id || session?.user?.email)) {
+    const owned = await prisma.order.findFirst({
+      where: {
+        orderNumber: searchParams.order,
+        OR: [
+          ...(session.user.id ? [{ userId: session.user.id }] : []),
+          ...(session.user.email ? [{ email: session.user.email }] : []),
+        ],
+      },
+      include: {
+        items: {
+          include: { product: { select: { title: true } } },
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+
+    if (owned) {
+      receipt = {
+        orderId: owned.id,
+        orderNumber: owned.orderNumber,
+        createdAt: owned.createdAt.toISOString(),
+        totalAmount: owned.totalAmount,
+        paymentStatus: owned.paymentStatus,
+        items: owned.items.map((item) => ({
+          title: item.product.title,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      };
+    }
+  }
+
+  return <ReceiptPrinterExperience order={receipt} />;
 }
