@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
@@ -42,6 +42,8 @@ export function SiteHeader({
   const [navOpen, setNavOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const accountBtnRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useDismissOnRouteChange(() => {
@@ -53,11 +55,29 @@ export function SiteHeader({
 
   useEffect(() => {
     if (!accountOpen) return;
+
+    function placeMenu() {
+      const el = accountBtnRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+
+    placeMenu();
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setAccountOpen(false);
     }
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", placeMenu);
+      window.removeEventListener("scroll", placeMenu, true);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [accountOpen]);
 
   const user = session?.user;
@@ -80,6 +100,12 @@ export function SiteHeader({
     setNavOpen(false);
     await signOut({ callbackUrl: "/" });
     router.refresh();
+  }
+
+  function goOrders() {
+    setAccountOpen(false);
+    setNavOpen(false);
+    router.push(opaqueHref("/orders"));
   }
 
   return (
@@ -125,15 +151,14 @@ export function SiteHeader({
                     <>
                       <p className="px-3 text-sm font-medium">{displayName}</p>
                       <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
-                      <SheetClose asChild>
-                        <Link
-                          href={opaqueHref("/orders")}
-                          className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
-                        >
-                          <Package className="h-4 w-4" />
-                          My Orders
-                        </Link>
-                      </SheetClose>
+                      <button
+                        type="button"
+                        onClick={goOrders}
+                        className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                      >
+                        <Package className="h-4 w-4" />
+                        My Orders
+                      </button>
                       <button
                         type="button"
                         onClick={handleSignOut}
@@ -195,7 +220,7 @@ export function SiteHeader({
             </Link>
           )}
 
-          <div className="relative">
+          <div className="relative" ref={accountBtnRef}>
             {signedIn ? (
               <>
                 <Button
@@ -217,57 +242,56 @@ export function SiteHeader({
                 >
                   <User className="h-5 w-5" />
                 </Button>
-                {accountOpen && (
-                  <>
-                    {portalReady
-                      ? createPortal(
+                {accountOpen && portalReady
+                  ? createPortal(
+                      <>
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-[200] cursor-default bg-transparent"
+                          aria-label="Close account menu"
+                          onClick={() => setAccountOpen(false)}
+                        />
+                        <div
+                          role="menu"
+                          className="fixed z-[210] w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"
+                          style={{ top: menuPos.top, right: menuPos.right }}
+                        >
+                          <p className="truncate text-sm font-medium">{user?.name || displayName}</p>
+                          <p className="truncate text-xs text-muted">{user?.email || userEmail}</p>
                           <button
                             type="button"
-                            className="fixed inset-0 z-[105] cursor-default"
-                            aria-label="Close account menu"
-                            onClick={() => setAccountOpen(false)}
-                          />,
-                          document.body,
-                        )
-                      : null}
-                    <div
-                      role="menu"
-                      className="absolute right-0 top-full z-[110] mt-2 w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"
-                    >
-                      <p className="truncate text-sm font-medium">{user?.name || displayName}</p>
-                      <p className="truncate text-xs text-muted">{user?.email || userEmail}</p>
-                      <Link
-                        href={opaqueHref("/orders")}
-                        role="menuitem"
-                        className="mt-3 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
-                        onClick={() => setAccountOpen(false)}
-                      >
-                        <Package className="h-4 w-4" />
-                        My Orders
-                      </Link>
-                      {isAdmin && (
-                        <Link
-                          href="/admin"
-                          role="menuitem"
-                          className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-sage/30 bg-sage/10 px-3 text-sm font-medium text-sage hover:bg-sage/15"
-                          onClick={() => setAccountOpen(false)}
-                        >
-                          <LayoutDashboard className="h-4 w-4" />
-                          Admin Dashboard
-                        </Link>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 w-full justify-start gap-2"
-                        onClick={handleSignOut}
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Log out
-                      </Button>
-                    </div>
-                  </>
-                )}
+                            role="menuitem"
+                            className="mt-3 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                            onClick={goOrders}
+                          >
+                            <Package className="h-4 w-4" />
+                            My Orders
+                          </button>
+                          {isAdmin && (
+                            <Link
+                              href="/admin"
+                              role="menuitem"
+                              className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-sage/30 bg-sage/10 px-3 text-sm font-medium text-sage hover:bg-sage/15"
+                              onClick={() => setAccountOpen(false)}
+                            >
+                              <LayoutDashboard className="h-4 w-4" />
+                              Admin Dashboard
+                            </Link>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 w-full justify-start gap-2"
+                            onClick={handleSignOut}
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Log out
+                          </Button>
+                        </div>
+                      </>,
+                      document.body,
+                    )
+                  : null}
               </>
             ) : (
               <Button
