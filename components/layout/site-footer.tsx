@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 
 function Icon({ children, label }: { children: React.ReactNode; label: string }) {
   return (
@@ -21,10 +22,10 @@ export function SiteFooter() {
           </p>
           <p className="mt-3 text-sm text-muted">contactus@elorakart.com</p>
           <ul className="mt-4 flex flex-wrap gap-3 text-sm text-muted">
-            <li><Link href="/sale" className="font-medium text-price-sale hover:underline">Sale</Link></li>
-            <li><Link href="/products" className="hover:underline hover:text-sage">Shop</Link></li>
-            <li><Link href="/blog" className="hover:underline hover:text-sage">Blog</Link></li>
-            <li><Link href="/about" className="hover:underline hover:text-sage">About</Link></li>
+            <li><Link href={opaqueHref("/sale")} className="font-medium text-price-sale hover:underline">Sale</Link></li>
+            <li><Link href={opaqueHref("/products")} className="hover:underline hover:text-sage">Shop</Link></li>
+            <li><Link href={opaqueHref("/blog")} className="hover:underline hover:text-sage">Blog</Link></li>
+            <li><Link href={opaqueHref("/about")} className="hover:underline hover:text-sage">About</Link></li>
           </ul>
         </div>
         <div>
@@ -67,8 +68,8 @@ export function SiteFooter() {
       <div className="flex flex-col items-center justify-between gap-2 border-t border-border/40 px-4 py-4 text-xs uppercase tracking-widest text-muted sm:flex-row md:px-6">
         <p>© {new Date().getFullYear()} Elorakart. All rights reserved.</p>
         <div className="flex gap-4">
-          <Link href="/about">Privacy Policy</Link>
-          <Link href="/about">Terms</Link>
+          <Link href={opaqueHref("/about")}>Privacy Policy</Link>
+          <Link href={opaqueHref("/about")}>Terms</Link>
         </div>
       </div>
     </footer>

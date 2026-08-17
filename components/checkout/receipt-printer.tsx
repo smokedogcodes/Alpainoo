@@ -334,7 +334,7 @@ function ReceiptPrinterOutput({
   return (
     <div
       className={cn(
-        "relative z-50 -mt-4 h-[32rem] w-[calc(80%+3rem)] max-w-full overflow-hidden px-6",
+        "relative z-10 -mt-4 h-[32rem] w-[calc(80%+3rem)] max-w-full overflow-hidden px-6",
         className,
       )}
       {...props}

@@ -5,6 +5,7 @@ import { useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/utils";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 import {
   ReceiptPrinter,
   type ReceiptPrinterStage,
@@ -83,9 +84,7 @@ function ReceiptBody({ order }: { order: ReceiptOrderData }) {
           ) : null}
         </ul>
       ) : (
-        <p className="text-center text-muted">
-          Thank you for shopping with us.
-        </p>
+        <p className="text-center text-muted">Thank you for shopping with us.</p>
       )}
 
       {typeof order.totalAmount === "number" ? (
@@ -112,16 +111,41 @@ function ReceiptBody({ order }: { order: ReceiptOrderData }) {
 
 export function ReceiptPrinterExperience({
   order,
+  playCelebration = false,
 }: {
   order: ReceiptOrderData;
+  playCelebration?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
-  const [stage, setStage] = useState<ReceiptPrinterStage>(() =>
-    reduceMotion ? "complete" : "processing",
-  );
+  const storageKey = order.orderId ? `ek_rcpt_${order.orderId}` : null;
+  const [allowCelebrate, setAllowCelebrate] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (reduceMotion) {
+    if (reduceMotion || !playCelebration || !storageKey) {
+      setAllowCelebrate(false);
+      setReady(true);
+      return;
+    }
+    try {
+      if (window.localStorage.getItem(storageKey) === "1") {
+        setAllowCelebrate(false);
+      } else {
+        window.localStorage.setItem(storageKey, "1");
+        setAllowCelebrate(true);
+      }
+    } catch {
+      setAllowCelebrate(playCelebration);
+    }
+    setReady(true);
+  }, [playCelebration, reduceMotion, storageKey]);
+
+  const skipAnimation = !ready || reduceMotion || !allowCelebrate;
+  const [stage, setStage] = useState<ReceiptPrinterStage>("complete");
+
+  useEffect(() => {
+    if (!ready) return;
+    if (skipAnimation) {
       setStage("complete");
       return;
     }
@@ -137,10 +161,10 @@ export function ReceiptPrinterExperience({
       window.clearTimeout(toPrinting);
       window.clearTimeout(toComplete);
     };
-  }, [reduceMotion, order.orderNumber]);
+  }, [ready, skipAnimation, order.orderNumber]);
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col items-center px-4 py-12 md:py-16">
+    <div className="relative z-0 mx-auto flex w-full max-w-lg flex-col items-center px-4 py-12 md:py-16">
       <ReceiptPrinter.Root stage={stage} className="w-full">
         <ReceiptPrinter.Machine>
           <ReceiptPrinter.Header>
@@ -161,9 +185,10 @@ export function ReceiptPrinterExperience({
       </ReceiptPrinter.Root>
 
       <div
-        className={`mt-2 flex w-full max-w-sm flex-col items-center gap-3 transition-opacity duration-300 ${
-          stage === "complete" ? "opacity-100" : "pointer-events-none opacity-0"
+        className={`relative z-10 mt-2 flex w-full max-w-sm flex-col items-center gap-3 transition-opacity duration-300 ${
+          stage === "complete" ? "opacity-100" : "opacity-0"
         }`}
+        aria-hidden={stage !== "complete"}
       >
         <p className="text-center text-sm text-muted">
           Your order has been placed
@@ -177,13 +202,17 @@ export function ReceiptPrinterExperience({
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Button asChild>
-            <Link href="/products">Continue shopping</Link>
+            <Link href={opaqueHref("/products")}>Continue shopping</Link>
           </Button>
           {order.orderId ? (
             <Button asChild variant="outline">
-              <Link href={`/orders/${order.orderId}`}>View order</Link>
+              <Link href={opaqueHref(`/orders/${order.orderId}`)}>View order</Link>
             </Button>
-          ) : null}
+          ) : (
+            <Button asChild variant="outline">
+              <Link href={opaqueHref("/orders")}>My orders</Link>
+            </Button>
+          )}
         </div>
       </div>
     </div>

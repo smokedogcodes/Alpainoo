@@ -1,45 +1,48 @@
-import { auth } from "@/auth";
+import { notFound, redirect } from "next/navigation";
 import { ReceiptPrinterExperience } from "@/components/checkout/receipt-printer-experience";
+import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
+import { verifyOrderAccess } from "@/lib/security/order-access";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 
 export default async function CheckoutSuccessPage({
   searchParams,
 }: {
-  searchParams: { order?: string };
+  searchParams: { t?: string; order?: string };
 }) {
-  const orderNumber = searchParams.order?.trim() || "your order";
-  const session = await auth();
+  // Legacy ?order= URLs are no longer accepted (IDOR / enumeration).
+  if (searchParams.order && !searchParams.t) {
+    redirect(opaqueHref("/orders"));
+  }
 
-  let receipt = {
-    orderNumber,
-  } as {
-    orderId?: string;
-    orderNumber: string;
-    createdAt?: string;
-    totalAmount?: number;
-    paymentStatus?: string;
-    items?: { title: string; quantity: number; price: number }[];
-  };
+  const user = await requireUser({ callbackPath: opaqueHref("/checkout/success") });
+  const access = verifyOrderAccess(searchParams.t);
+  if (!access || access.userId !== user.id) {
+    notFound();
+  }
 
-  if (searchParams.order && (session?.user?.id || session?.user?.email)) {
-    const owned = await prisma.order.findFirst({
-      where: {
-        orderNumber: searchParams.order,
-        OR: [
-          ...(session.user.id ? [{ userId: session.user.id }] : []),
-          ...(session.user.email ? [{ email: session.user.email }] : []),
-        ],
+  const owned = await prisma.order.findFirst({
+    where: {
+      id: access.orderId,
+      orderNumber: access.orderNumber,
+      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
+    },
+    include: {
+      items: {
+        include: { product: { select: { title: true } } },
+        orderBy: { id: "asc" },
       },
-      include: {
-        items: {
-          include: { product: { select: { title: true } } },
-          orderBy: { id: "asc" },
-        },
-      },
-    });
+    },
+  });
 
-    if (owned) {
-      receipt = {
+  if (!owned) {
+    notFound();
+  }
+
+  return (
+    <ReceiptPrinterExperience
+      playCelebration={Boolean(access.celebrate)}
+      order={{
         orderId: owned.id,
         orderNumber: owned.orderNumber,
         createdAt: owned.createdAt.toISOString(),
@@ -50,9 +53,7 @@ export default async function CheckoutSuccessPage({
           quantity: item.quantity,
           price: item.price,
         })),
-      };
-    }
-  }
-
-  return <ReceiptPrinterExperience order={receipt} />;
+      }}
+    />
+  );
 }

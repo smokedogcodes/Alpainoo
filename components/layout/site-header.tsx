@@ -18,15 +18,16 @@ import { useCart } from "@/lib/cart";
 import { CartSheet } from "@/components/cart/cart-sheet";
 import { HeaderSearch } from "@/components/layout/header-search";
 import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 import { useRouter } from "next/navigation";
 
 const nav = [
-  { href: "/sale", label: "Sale" },
-  { href: "/products?category=Hair+Serum", label: "Hair and Skin" },
-  { href: "/products?category=Perfume", label: "Fragrances" },
-  { href: "/products", label: "Shop" },
-  { href: "/blog", label: "Blog" },
-  { href: "/about", label: "About" },
+  { href: opaqueHref("/sale"), label: "Sale" },
+  { href: opaqueHref("/products?category=Hair+Serum"), label: "Hair and Skin" },
+  { href: opaqueHref("/products?category=Perfume"), label: "Fragrances" },
+  { href: opaqueHref("/products"), label: "Shop" },
+  { href: opaqueHref("/blog"), label: "Blog" },
+  { href: opaqueHref("/about"), label: "About" },
 ];
 
 export function SiteHeader({
@@ -82,7 +83,7 @@ export function SiteHeader({
   }
 
   return (
-    <header className="glass-nav sticky top-0 z-40 border-b border-border/50">
+    <header className="glass-nav sticky top-0 z-[100] border-b border-border/50">
       <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-3.5 md:px-6">
         <div className="flex items-center gap-2 lg:w-44">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -126,7 +127,7 @@ export function SiteHeader({
                       <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
                       <SheetClose asChild>
                         <Link
-                          href="/orders"
+                          href={opaqueHref("/orders")}
                           className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
                         >
                           <Package className="h-4 w-4" />
@@ -222,7 +223,7 @@ export function SiteHeader({
                       ? createPortal(
                           <button
                             type="button"
-                            className="fixed inset-0 z-[45] cursor-default"
+                            className="fixed inset-0 z-[105] cursor-default"
                             aria-label="Close account menu"
                             onClick={() => setAccountOpen(false)}
                           />,
@@ -231,12 +232,12 @@ export function SiteHeader({
                       : null}
                     <div
                       role="menu"
-                      className="absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"
+                      className="absolute right-0 top-full z-[110] mt-2 w-56 rounded-lg border border-border bg-cream p-3 shadow-lg"
                     >
                       <p className="truncate text-sm font-medium">{user?.name || displayName}</p>
                       <p className="truncate text-xs text-muted">{user?.email || userEmail}</p>
                       <Link
-                        href="/orders"
+                        href={opaqueHref("/orders")}
                         role="menuitem"
                         className="mt-3 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
                         onClick={() => setAccountOpen(false)}

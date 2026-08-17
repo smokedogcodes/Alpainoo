@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
 import { CancelOrderForm } from "@/components/orders/cancel-order-form";
+import { requireUser } from "@/lib/auth/require-user";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 
 type Address = {
   name?: string;
@@ -17,18 +18,16 @@ type Address = {
 const CANCELLABLE = new Set(["PENDING", "PAID", "PROCESSING"]);
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.id && !session?.user?.email) {
-    redirect("/?error=login");
+  if (!/^[a-zA-Z0-9_-]{8,64}$/.test(params.id)) {
+    notFound();
   }
+
+  const user = await requireUser({ callbackPath: opaqueHref(`/orders/${params.id}`) });
 
   const order = await prisma.order.findFirst({
     where: {
       id: params.id,
-      OR: [
-        ...(session.user.id ? [{ userId: session.user.id }] : []),
-        ...(session.user.email ? [{ email: session.user.email }] : []),
-      ],
+      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
     },
     include: {
       items: { include: { product: { select: { title: true, slug: true, sku: true } } } },
@@ -49,7 +48,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
   return (
     <div className="mx-auto max-w-store px-4 py-10 md:px-6">
-      <Link href="/orders" className="text-sm text-sage underline">
+      <Link href={opaqueHref("/orders")} className="text-sm text-sage underline">
         ← My Orders
       </Link>
 

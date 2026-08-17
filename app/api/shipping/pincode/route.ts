@@ -22,10 +22,13 @@ export async function POST(req: Request) {
   }
 
   const result = await checkPincodeServiceability(parsed.data.pincode);
-  return NextResponse.json(result, {
-    headers: {
-      "Cache-Control": "private, max-age=300",
-      "Access-Control-Allow-Origin": process.env.NEXT_PUBLIC_APP_URL || "*",
-    },
-  });
+  const allowOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
+  const headers: Record<string, string> = {
+    "Cache-Control": "private, max-age=300",
+  };
+  if (allowOrigin) {
+    headers["Access-Control-Allow-Origin"] = allowOrigin;
+    headers.Vary = "Origin";
+  }
+  return NextResponse.json(result, { headers });
 }

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getRazorpay, verifyPaymentSignature } from "@/lib/razorpay";
 import { auth } from "@/auth";
 import { CheckoutSchema, VerifyPaymentSchema } from "@/lib/validation";
+import { signOrderAccess } from "@/lib/security/order-access";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 
 export type CheckoutInput = {
   email: string;
@@ -26,10 +28,30 @@ export type CheckoutOrderResult =
       currency: string;
       key: string;
       mock: boolean;
+      successUrl: string;
     }
   | { ok: false; error: string };
 
+function successUrlFor(
+  order: { id: string; orderNumber: string },
+  userId: string,
+  celebrate: boolean
+) {
+  const t = signOrderAccess({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    userId,
+    celebrate,
+  });
+  return opaqueHref(`/checkout/success?t=${encodeURIComponent(t)}`);
+}
+
 export async function createCheckoutOrder(input: CheckoutInput): Promise<CheckoutOrderResult> {
+  const session = await auth();
+  if (!session?.user?.id || !session.user.email) {
+    return { ok: false, error: "Please sign in to checkout" };
+  }
+
   const parsed = CheckoutSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message || "Invalid checkout data" };
@@ -60,21 +82,17 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
 
     const orderNumber = `EK${Date.now().toString().slice(-10)}`;
 
-    let userId: string | undefined;
-    const session = await auth();
-    if (session?.user?.email) {
-      const user = await prisma.user.upsert({
-        where: { email: session.user.email },
-        create: {
-          email: session.user.email,
-          name: session.user.name || data.name,
-          image: session.user.image || null,
-          avatarUrl: session.user.image || null,
-        },
-        update: {},
-      });
-      userId = user.id;
-    }
+    const user = await prisma.user.upsert({
+      where: { email: session.user.email },
+      create: {
+        email: session.user.email,
+        name: session.user.name || data.name,
+        image: session.user.image || null,
+        avatarUrl: session.user.image || null,
+      },
+      update: {},
+    });
+    const userId = user.id;
 
     const shippingAddress = JSON.stringify({
       name: data.name,
@@ -126,7 +144,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         message: `Order ${order.orderNumber} created`,
         entityType: "Order",
         entityId: order.id,
-        actorUserId: userId || null,
+        actorUserId: userId,
         actorEmail: data.email,
         meta: { totalAmount, itemCount: lineItems.length, mock: !razorpay },
       })
@@ -141,6 +159,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       currency: "INR",
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || "",
       mock: !razorpay,
+      successUrl: successUrlFor(order, userId, true),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Checkout failed";
@@ -153,7 +172,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         meta: { email: data.email },
       })
     );
-    return { ok: false, error: message };
+    return { ok: false, error: "Checkout failed. Please try again." };
   }
 }
 
@@ -161,30 +180,48 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
  * Demo payment when Razorpay keys are not configured.
  * Blocked whenever live Razorpay credentials exist.
  */
-export async function confirmMockPayment(orderId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function confirmMockPayment(
+  orderId: string
+): Promise<{ ok: true; successUrl: string } | { ok: false; error: string }> {
   if (getRazorpay()) {
     return { ok: false, error: "Use Razorpay checkout" };
   }
-  if (!orderId || typeof orderId !== "string") {
+  if (!orderId || typeof orderId !== "string" || orderId.length > 64) {
     return { ok: false, error: "Invalid order" };
   }
 
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { ok: false, error: "Please sign in" };
+  }
+
   try {
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        userId: session.user.id,
+        paymentStatus: "PENDING",
+      },
+    });
+    if (!order) {
+      return { ok: false, error: "Order not found" };
+    }
+
     const { fulfillPaidOrder } = await import("@/lib/fulfillment");
-    await fulfillPaidOrder(orderId, `pay_mock_${Date.now()}`);
-    return { ok: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Payment failed";
+    await fulfillPaidOrder(order.id, `pay_mock_${Date.now()}`);
+    return { ok: true, successUrl: successUrlFor(order, session.user.id, true) };
+  } catch {
     void import("@/lib/logging/system-log").then(({ logError }) =>
       logError({
         category: "payment",
         action: "MOCK_PAYMENT_FAILED",
-        message,
+        message: "Mock payment failed",
         entityType: "Order",
         entityId: orderId,
+        actorUserId: session.user.id,
       })
     );
-    return { ok: false, error: message };
+    return { ok: false, error: "Payment failed" };
   }
 }
 
@@ -194,17 +231,38 @@ export async function verifyAndFulfillPayment(input: {
   razorpayOrderId: string;
   razorpayPaymentId: string;
   razorpaySignature: string;
-}): Promise<{ ok: true; alreadyPaid?: boolean } | { ok: false; error: string }> {
+}): Promise<
+  { ok: true; alreadyPaid?: boolean; successUrl: string } | { ok: false; error: string }
+> {
   const parsed = VerifyPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid payment payload" };
 
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { ok: false, error: "Please sign in" };
+  }
+
   try {
-    const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId } });
+    const order = await prisma.order.findFirst({
+      where: {
+        id: parsed.data.orderId,
+        OR: [
+          { userId: session.user.id },
+          ...(session.user.email ? [{ email: session.user.email }] : []),
+        ],
+      },
+    });
     if (!order) return { ok: false, error: "Order not found" };
     if (order.razorpayOrderId !== parsed.data.razorpayOrderId) {
       return { ok: false, error: "Order mismatch" };
     }
-    if (order.paymentStatus === "PAID") return { ok: true, alreadyPaid: true };
+    if (order.paymentStatus === "PAID") {
+      return {
+        ok: true,
+        alreadyPaid: true,
+        successUrl: successUrlFor(order, session.user.id, false),
+      };
+    }
 
     const valid = verifyPaymentSignature({
       orderId: parsed.data.razorpayOrderId,
@@ -226,18 +284,21 @@ export async function verifyAndFulfillPayment(input: {
 
     const { fulfillPaidOrder } = await import("@/lib/fulfillment");
     await fulfillPaidOrder(order.id, parsed.data.razorpayPaymentId);
-    return { ok: true, alreadyPaid: false };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Payment verification failed";
+    return {
+      ok: true,
+      alreadyPaid: false,
+      successUrl: successUrlFor(order, session.user.id, true),
+    };
+  } catch {
     void import("@/lib/logging/system-log").then(({ logError }) =>
       logError({
         category: "payment",
         action: "VERIFY_FAILED",
-        message,
+        message: "Payment verification failed",
         entityType: "Order",
         entityId: input.orderId,
       })
     );
-    return { ok: false, error: message };
+    return { ok: false, error: "Payment verification failed" };
   }
 }

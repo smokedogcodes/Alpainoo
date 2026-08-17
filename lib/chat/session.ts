@@ -1,25 +1,35 @@
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
 
+/**
+ * Resume chat only via httpOnly cookie — never trust a client-supplied sessionId alone (IDOR).
+ */
 export async function resolveChatSession(opts: {
-  sessionId?: string | null;
   userId?: string | null;
+  cookieSessionId?: string | null;
 }) {
-  const requested = opts.sessionId?.trim() || null;
+  const cookieId = opts.cookieSessionId?.trim() || null;
 
-  if (requested) {
-    const existing = await prisma.chatSession.findUnique({ where: { id: requested } });
+  if (cookieId) {
+    const existing = await prisma.chatSession.findUnique({ where: { id: cookieId } });
     if (existing) {
-      if (opts.userId && !existing.userId) {
-        return {
-          session: await prisma.chatSession.update({
-            where: { id: existing.id },
-            data: { userId: opts.userId },
-          }),
-          setCookie: false as const,
-        };
+      if (existing.userId) {
+        if (opts.userId && existing.userId === opts.userId) {
+          return { session: existing, setCookie: false as const };
+        }
+        // Cookie points at another user's session — do not reuse
+      } else {
+        if (opts.userId) {
+          return {
+            session: await prisma.chatSession.update({
+              where: { id: existing.id },
+              data: { userId: opts.userId },
+            }),
+            setCookie: false as const,
+          };
+        }
+        return { session: existing, setCookie: false as const };
       }
-      return { session: existing, setCookie: false as const };
     }
   }
 

@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { toast } from "sonner";
+import { signIn, useSession } from "next-auth/react";
 import { useCart } from "@/lib/cart";
 import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ function normalizePhone(raw: string) {
 }
 
 export default function CheckoutPage() {
+  const { data: session, status } = useSession();
   const items = useCart((s) => s.items);
   const clear = useCart((s) => s.clear);
   const subtotal = useCart((s) => s.subtotal);
@@ -39,8 +41,15 @@ export default function CheckoutPage() {
     pincode: "",
   });
 
+  const signedIn = status === "authenticated" && Boolean(session?.user?.id);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!signedIn) {
+      toast.error("Please sign in to checkout");
+      await signIn("google", { callbackUrl: "/c/k9c4wx" });
+      return;
+    }
     if (!items.length) {
       toast.error("Cart is empty");
       return;
@@ -78,7 +87,7 @@ export default function CheckoutPage() {
         }
         clear();
         toast.success("Order placed (demo payment)");
-        router.push(`/checkout/success?order=${result.orderNumber}`);
+        router.push(paid.successUrl);
         return;
       }
 
@@ -112,7 +121,7 @@ export default function CheckoutPage() {
           }
           clear();
           toast.success("Payment successful");
-          router.push(`/checkout/success?order=${result.orderNumber}`);
+          router.push(verified.successUrl);
         },
       });
       rzp.open();
@@ -121,6 +130,26 @@ export default function CheckoutPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="mx-auto max-w-store px-4 py-10 md:px-6">
+        <p className="text-muted">Loading checkout…</p>
+      </div>
+    );
+  }
+
+  if (!signedIn) {
+    return (
+      <div className="mx-auto max-w-store px-4 py-10 md:px-6">
+        <h1 className="font-display text-4xl">Checkout</h1>
+        <p className="mt-3 text-muted">Sign in with Google to place an order securely.</p>
+        <Button className="mt-6" onClick={() => signIn("google", { callbackUrl: "/c/k9c4wx" })}>
+          Sign in to continue
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -211,30 +240,35 @@ export default function CheckoutPage() {
               pattern="\d{6}"
               className="mt-1.5"
               value={form.pincode}
-              onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
+                }))
+              }
             />
           </div>
           <Button type="submit" variant="terracotta" className="w-full" disabled={loading || !items.length}>
             {loading ? "Processing..." : `Pay ${formatINR(subtotal())}`}
           </Button>
         </form>
-        <aside className="rounded-lg border border-border bg-white p-5 h-fit">
+        <aside className="h-fit rounded-lg border border-border bg-white p-5">
           <h2 className="font-display text-2xl">Order summary</h2>
           <ul className="mt-4 divide-y divide-border">
             {items.map((i) => (
               <li key={i.productId} className="flex items-center justify-between gap-3 py-3 text-sm">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex min-w-0 items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={i.image || "/products/placeholder.jpg"}
                     alt=""
-                    className="h-12 w-12 rounded-md object-cover bg-blush-soft"
+                    className="h-12 w-12 rounded-md bg-blush-soft object-cover"
                   />
                   <span className="truncate">
                     {i.title} × {i.quantity}
                   </span>
                 </div>
-                <span className="font-medium shrink-0">{formatINR(i.price * i.quantity)}</span>
+                <span className="shrink-0 font-medium">{formatINR(i.price * i.quantity)}</span>
               </li>
             ))}
           </ul>

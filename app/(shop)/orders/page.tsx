@@ -1,24 +1,19 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
+import { requireUser } from "@/lib/auth/require-user";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 
 export default async function MyOrdersPage() {
-  const session = await auth();
-  if (!session?.user?.id && !session?.user?.email) {
-    redirect("/?error=login");
-  }
+  const user = await requireUser({ callbackPath: opaqueHref("/orders") });
 
   const orders = await prisma.order.findMany({
     where: {
-      OR: [
-        ...(session.user.id ? [{ userId: session.user.id }] : []),
-        ...(session.user.email ? [{ email: session.user.email }] : []),
-      ],
+      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
     },
     include: { items: true, shipment: true },
     orderBy: { createdAt: "desc" },
+    take: 100,
   });
 
   return (
@@ -30,7 +25,7 @@ export default async function MyOrdersPage() {
         {orders.map((o) => (
           <Link
             key={o.id}
-            href={`/orders/${o.id}`}
+            href={opaqueHref(`/orders/${o.id}`)}
             className="block rounded-lg border border-border bg-cream p-4 transition-colors hover:border-sage/40"
           >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -47,7 +42,9 @@ export default async function MyOrdersPage() {
               </div>
               <div className="text-left sm:text-right">
                 <p className="font-medium">{formatINR(o.totalAmount)}</p>
-                <p className="text-xs uppercase tracking-wide text-muted">{o.orderStatus.replaceAll("_", " ")}</p>
+                <p className="text-xs uppercase tracking-wide text-muted">
+                  {o.orderStatus.replaceAll("_", " ")}
+                </p>
               </div>
             </div>
             {o.shipment?.trackingStatus && (
@@ -58,7 +55,7 @@ export default async function MyOrdersPage() {
         {!orders.length && (
           <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
             <p className="text-muted">You haven&apos;t placed an order yet.</p>
-            <Link href="/products" className="mt-3 inline-block text-sm text-sage underline">
+            <Link href={opaqueHref("/products")} className="mt-3 inline-block text-sm text-sage underline">
               Browse products
             </Link>
           </div>

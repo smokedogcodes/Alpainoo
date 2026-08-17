@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product/product-image";
 import { useCart } from "@/lib/cart";
 import { formatINR } from "@/lib/utils";
+import { opaqueHref } from "@/lib/security/opaque-routes";
 import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 
 export function CartSheet({ children }: { children: React.ReactNode }) {
@@ -91,7 +92,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
           </div>
           <SheetClose asChild>
             <Button asChild variant="terracotta" className="w-full" disabled={!items.length}>
-              <Link href="/checkout">Proceed to Checkout</Link>
+              <Link href={opaqueHref("/checkout")}>Proceed to Checkout</Link>
             </Button>
           </SheetClose>
           <p className="text-center text-xs text-muted">Shipping & taxes calculated at checkout.</p>

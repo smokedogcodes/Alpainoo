@@ -60,6 +60,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `File too large: ${file.name}` }, { status: 400 });
       }
       const buffer = Buffer.from(await file.arrayBuffer());
+      // Reject obvious polyglot / script payloads near file head
+      const head = buffer.subarray(0, Math.min(512, buffer.length)).toString("latin1");
+      if (/<\s*script/i.test(head) || /<\?php/i.test(head)) {
+        return NextResponse.json({ error: "File failed security checks" }, { status: 400 });
+      }
       const detected = detectMime(buffer);
       if (!detected || !ALLOWED.has(detected)) {
         return NextResponse.json({ error: `Unsupported or spoofed type: ${file.name}` }, { status: 400 });

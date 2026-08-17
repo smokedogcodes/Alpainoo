@@ -81,7 +81,7 @@ function ticketSuggestionSuffix(category: "ORDER" | "GENERAL") {
 
 export async function POST(req: Request) {
   const ip = clientIp(req);
-  const limited = await rateLimit(`chat:${ip}`, { limit: 20, windowMs: 60_000 });
+  const limited = await rateLimit(`chat:${ip}`, { limit: 12, windowMs: 60_000 });
   if (!limited.success) {
     return NextResponse.json({ error: "Too many messages. Please wait a moment." }, { status: 429 });
   }
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
   const userName = session?.user?.name ?? null;
 
   const { session: chatSession, setCookie } = await resolveChatSession({
-    sessionId: parsed.data.sessionId || cookieSessionId,
+    cookieSessionId,
     userId,
   });
 
