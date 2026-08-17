@@ -23,6 +23,14 @@ function extractJson(text: string): GeminiChatResult | null {
   }
 }
 
+/** Prefer env override; try current free-tier models in order. */
+function modelCandidates() {
+  const preferred = process.env.GEMINI_MODEL?.trim();
+  const defaults = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
+  if (preferred) return [preferred, ...defaults.filter((m) => m !== preferred)];
+  return defaults;
+}
+
 export async function askGemini(input: {
   userMessage: string;
   intent: string;
@@ -39,10 +47,6 @@ export async function askGemini(input: {
   }
 
   const genAI = new GoogleGenerativeAI(key);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
-  });
 
   const prompt = `You are Elorakart's helpful skincare store assistant.
 Answer ONLY using the provided CONTEXT. If context is insufficient, set canAnswer=false and suggestTicket=true.
@@ -60,23 +64,40 @@ ${input.userMessage}
 Respond with ONLY valid JSON:
 {"answer":"string","canAnswer":true|false,"suggestTicket":true|false}`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const parsed = extractJson(text);
-    if (parsed?.answer) return parsed;
-    return {
-      answer: text.slice(0, 800) || "I could not form a clear answer.",
-      canAnswer: false,
-      suggestTicket: true,
-    };
-  } catch (err) {
-    console.error("[gemini]", err);
-    return {
-      answer:
-        "I am having trouble reaching the AI service right now. Would you like to create a support ticket?",
-      canAnswer: false,
-      suggestTicket: true,
-    };
+  const models = modelCandidates();
+  let lastError: unknown;
+
+  for (const modelName of models) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
+      });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const parsed = extractJson(text);
+      if (parsed?.answer) return parsed;
+      return {
+        answer: text.slice(0, 800) || "I could not form a clear answer.",
+        canAnswer: false,
+        suggestTicket: true,
+      };
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[gemini] model ${modelName} failed:`, msg.slice(0, 300));
+      // Try next candidate on 404 / not found; stop on auth/quota-like errors
+      if (/API_KEY|PERMISSION|403|401|quota|billing/i.test(msg) && !/404|NOT_FOUND/i.test(msg)) {
+        break;
+      }
+    }
   }
+
+  console.error("[gemini] all models failed:", lastError);
+  return {
+    answer:
+      "I am having trouble reaching the AI service right now. Would you like to create a support ticket?",
+    canAnswer: false,
+    suggestTicket: true,
+  };
 }
