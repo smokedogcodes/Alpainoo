@@ -6,6 +6,11 @@ export type GeminiChatResult = {
   suggestTicket: boolean;
 };
 
+export type ChatHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 function extractJson(text: string): GeminiChatResult | null {
   const cleaned = text.replace(/```json|```/g, "").trim();
   const start = cleaned.indexOf("{");
@@ -91,10 +96,18 @@ async function listGenerateContentModels(apiKey: string): Promise<string[]> {
   }
 }
 
+function formatHistory(history: ChatHistoryTurn[] | undefined): string {
+  if (!history?.length) return "(none)";
+  return history
+    .map((turn) => `${turn.role === "user" ? "Customer" : "Assistant"}: ${turn.content}`)
+    .join("\n");
+}
+
 export async function askGemini(input: {
   userMessage: string;
   intent: string;
   context: string;
+  history?: ChatHistoryTurn[];
 }): Promise<GeminiChatResult> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) {
@@ -108,17 +121,26 @@ export async function askGemini(input: {
 
   const genAI = new GoogleGenerativeAI(key);
 
-  const prompt = `You are Elorakart's helpful skincare store assistant.
-Answer ONLY using the provided CONTEXT. If context is insufficient, set canAnswer=false and suggestTicket=true.
-Never invent order numbers, prices, stock, or personal data.
-Be concise and friendly.
+  const prompt = `You are Elorakart's store assistant for a skincare / beauty e-commerce shop in India.
+Your ONLY job is helping with Elorakart products, stock/prices from CONTEXT, orders (from CONTEXT only), shipping, returns/refunds, payment methods, and store policies.
+
+STRICT SCOPE:
+- Answer ONLY Elorakart shopping and support questions.
+- If the user asks about politics, coding/homework, unrelated trivia, other brands' general advice unrelated to shopping at Elorakart, or anything outside this store → refuse briefly, set canAnswer=false and suggestTicket=false. Do NOT push a support ticket for off-topic chat.
+- Use RECENT CONVERSATION to resolve follow-ups ("that one", "shipping for it", "what about returns?"). Stay coherent with prior turns.
+- Answer using CONTEXT + conversation. If store context is insufficient for an on-topic question, set canAnswer=false and suggestTicket=true.
+- Never invent order numbers, prices, stock, tracking, or personal data. Never use another customer's data.
+- Be concise and friendly.
 
 INTENT: ${input.intent}
+
+RECENT CONVERSATION (oldest first; may be empty):
+${formatHistory(input.history)}
 
 CONTEXT:
 ${input.context || "(none)"}
 
-USER MESSAGE:
+CURRENT USER MESSAGE:
 ${input.userMessage}
 
 Respond with ONLY valid JSON:

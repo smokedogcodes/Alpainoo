@@ -71,10 +71,11 @@ export function shouldCacheAnswer(opts: {
   intent: string;
 }): boolean {
   if (!opts.canAnswer || opts.suggestTicket) return false;
-  if (opts.intent === "order") return false;
+  if (opts.intent === "order" || opts.intent === "off_topic") return false;
   const answer = opts.answer.trim();
   if (!answer) return false;
   if (UNCACHABLE_ANSWER_RE.test(answer)) return false;
+  if (/only help with|store assistant|unrelated|off[- ]topic/i.test(answer)) return false;
   return true;
 }
 

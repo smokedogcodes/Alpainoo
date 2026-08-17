@@ -3,8 +3,15 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
-import { detectIntent, scoreKnowledgeMatch, KB_MATCH_THRESHOLD } from "@/lib/chat/intent";
-import { askGemini } from "@/lib/chat/gemini";
+import {
+  detectIntent,
+  scoreKnowledgeMatch,
+  KB_MATCH_THRESHOLD,
+  looksLikeFollowUp,
+  OFF_TOPIC_REFUSAL,
+  type ChatIntent,
+} from "@/lib/chat/intent";
+import { askGemini, type ChatHistoryTurn } from "@/lib/chat/gemini";
 import {
   findCachedAnswer,
   recordCacheHit,
@@ -22,6 +29,9 @@ const bodySchema = z.object({
   ticketCategory: z.enum(["GENERAL", "ORDER"]).optional(),
 });
 
+/** Recent turns passed to Gemini (excluding the current user message). */
+const HISTORY_LIMIT = 10;
+
 function jsonWithSession(
   data: Record<string, unknown>,
   sessionId: string,
@@ -38,6 +48,35 @@ function jsonWithSession(
     });
   }
   return res;
+}
+
+async function loadConversationHistory(
+  sessionId: string
+): Promise<ChatHistoryTurn[]> {
+  const recent = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "desc" },
+    take: HISTORY_LIMIT + 1,
+  });
+  const chronological = recent.reverse();
+  // Drop the trailing user message we just persisted — it is passed separately.
+  const prior =
+    chronological.length && chronological[chronological.length - 1]?.role === "user"
+      ? chronological.slice(0, -1)
+      : chronological;
+
+  return prior
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+      content: m.content,
+    }));
+}
+
+function ticketSuggestionSuffix(category: "ORDER" | "GENERAL") {
+  return category === "ORDER"
+    ? "\n\nWould you like me to create a support ticket? Our team will follow up (48h TAT for order issues)."
+    : "\n\nWould you like me to create a support ticket? (24h TAT for general help)";
 }
 
 export async function POST(req: Request) {
@@ -72,6 +111,41 @@ export async function POST(req: Request) {
       orderBy: { createdAt: "desc" },
       take: 12,
     });
+
+    // Do not open tickets from purely off-topic threads unless the user labeled it as store support.
+    const subject = (parsed.data.ticketSubject || "").toLowerCase();
+    const asksElorakartSupport =
+      /\b(elorakart|order|shipping|refund|return|product|payment|delivery|support|help|ticket)\b/i.test(
+        subject
+      ) || parsed.data.ticketCategory === "ORDER";
+    const recentOnTopic = recent.some(
+      (m) => m.role === "user" && m.intent && m.intent !== "off_topic"
+    );
+    if (!asksElorakartSupport && !recentOnTopic) {
+      const reply =
+        "I can only create support tickets for Elorakart store issues (orders, products, shipping, policies). Please ask about your Elorakart concern first.";
+      await prisma.chatMessage.create({
+        data: {
+          sessionId: chatSession.id,
+          role: "assistant",
+          content: reply,
+          intent: "off_topic",
+          source: "system",
+        },
+      });
+      return jsonWithSession(
+        {
+          sessionId: chatSession.id,
+          reply,
+          source: "system",
+          requireLogin: false,
+          suggestTicket: false,
+        },
+        chatSession.id,
+        setCookie
+      );
+    }
+
     const transcript = recent
       .reverse()
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
@@ -144,7 +218,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Message required" }, { status: 400 });
   }
 
-  const intent = detectIntent(message);
+  const intent: ChatIntent = detectIntent(message);
   await prisma.chatMessage.create({
     data: {
       sessionId: chatSession.id,
@@ -154,6 +228,36 @@ export async function POST(req: Request) {
       source: "user",
     },
   });
+
+  // Cheap pre-Gemini out-of-scope guard — no cache, no tickets.
+  if (intent === "off_topic") {
+    await prisma.chatMessage.create({
+      data: {
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: OFF_TOPIC_REFUSAL,
+        intent: "off_topic",
+        source: "system",
+      },
+    });
+    return jsonWithSession(
+      {
+        sessionId: chatSession.id,
+        reply: OFF_TOPIC_REFUSAL,
+        source: "system",
+        intent: "off_topic",
+        requireLogin: false,
+        suggestTicket: false,
+        canAnswer: false,
+      },
+      chatSession.id,
+      setCookie
+    );
+  }
+
+  const history = await loadConversationHistory(chatSession.id);
+  // Follow-ups that refer to prior turns skip KB/cache short-circuit; always pass history to Gemini.
+  const preferHistory = history.length > 0 && looksLikeFollowUp(message);
 
   if (intent === "order") {
     if (!userId && !userEmail) {
@@ -209,10 +313,16 @@ export async function POST(req: Request) {
             })
             .join("\n");
 
-    const gemini = await askGemini({ userMessage: message, intent, context });
-    const suggestTicket = gemini.suggestTicket || !gemini.canAnswer;
+    const gemini = await askGemini({
+      userMessage: message,
+      intent,
+      context,
+      history,
+    });
+    // Trust model flags: do not force tickets when canAnswer is false (e.g. soft refusals).
+    const suggestTicket = Boolean(gemini.suggestTicket);
     const reply = suggestTicket
-      ? `${gemini.answer}\n\nWould you like me to create a support ticket? Our team will follow up (48h TAT for order issues).`
+      ? `${gemini.answer}${ticketSuggestionSuffix("ORDER")}`
       : gemini.answer;
 
     await prisma.chatMessage.create({
@@ -241,62 +351,66 @@ export async function POST(req: Request) {
   }
 
   const articles = await prisma.knowledgeArticle.findMany({ where: { active: true } });
-  let best: { article: (typeof articles)[0]; score: number } | null = null;
-  for (const a of articles) {
-    const score = scoreKnowledgeMatch(message, a);
-    if (!best || score > best.score) best = { article: a, score };
-  }
 
-  if (best && best.score >= KB_MATCH_THRESHOLD) {
-    const reply = best.article.answer;
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: chatSession.id,
-        role: "assistant",
-        content: reply,
-        intent: "faq",
-        source: "kb",
-      },
-    });
-    return jsonWithSession(
-      {
-        sessionId: chatSession.id,
-        reply,
-        source: "kb",
-        intent: "faq",
-        requireLogin: false,
-        suggestTicket: false,
-        kbTitle: best.article.title,
-      },
-      chatSession.id,
-      setCookie
-    );
-  }
+  // Follow-ups that refer to prior turns should not short-circuit on a single-FAQ cache/KB hit.
+  if (!preferHistory) {
+    let best: { article: (typeof articles)[0]; score: number } | null = null;
+    for (const a of articles) {
+      const score = scoreKnowledgeMatch(message, a);
+      if (!best || score > best.score) best = { article: a, score };
+    }
 
-  const cached = await findCachedAnswer(message);
-  if (cached) {
-    await recordCacheHit(cached.id);
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: chatSession.id,
-        role: "assistant",
-        content: cached.answer,
-        intent: cached.intent || intent,
-        source: "cache",
-      },
-    });
-    return jsonWithSession(
-      {
-        sessionId: chatSession.id,
-        reply: cached.answer,
-        source: "cache",
-        intent: cached.intent || intent,
-        requireLogin: false,
-        suggestTicket: false,
-      },
-      chatSession.id,
-      setCookie
-    );
+    if (best && best.score >= KB_MATCH_THRESHOLD) {
+      const reply = best.article.answer;
+      await prisma.chatMessage.create({
+        data: {
+          sessionId: chatSession.id,
+          role: "assistant",
+          content: reply,
+          intent: "faq",
+          source: "kb",
+        },
+      });
+      return jsonWithSession(
+        {
+          sessionId: chatSession.id,
+          reply,
+          source: "kb",
+          intent: "faq",
+          requireLogin: false,
+          suggestTicket: false,
+          kbTitle: best.article.title,
+        },
+        chatSession.id,
+        setCookie
+      );
+    }
+
+    const cached = await findCachedAnswer(message);
+    if (cached) {
+      await recordCacheHit(cached.id);
+      await prisma.chatMessage.create({
+        data: {
+          sessionId: chatSession.id,
+          role: "assistant",
+          content: cached.answer,
+          intent: cached.intent || intent,
+          source: "cache",
+        },
+      });
+      return jsonWithSession(
+        {
+          sessionId: chatSession.id,
+          reply: cached.answer,
+          source: "cache",
+          intent: cached.intent || intent,
+          requireLogin: false,
+          suggestTicket: false,
+        },
+        chatSession.id,
+        setCookie
+      );
+    }
   }
 
   let context = "";
@@ -332,10 +446,15 @@ export async function POST(req: Request) {
     }
   }
 
-  const gemini = await askGemini({ userMessage: message, intent, context });
-  const suggestTicket = gemini.suggestTicket || !gemini.canAnswer;
+  const gemini = await askGemini({
+    userMessage: message,
+    intent,
+    context,
+    history,
+  });
+  const suggestTicket = Boolean(gemini.suggestTicket);
   const reply = suggestTicket
-    ? `${gemini.answer}\n\nWould you like me to create a support ticket? (24h TAT for general help)`
+    ? `${gemini.answer}${ticketSuggestionSuffix("GENERAL")}`
     : gemini.answer;
 
   if (
@@ -344,7 +463,8 @@ export async function POST(req: Request) {
       canAnswer: gemini.canAnswer,
       suggestTicket: gemini.suggestTicket,
       intent,
-    })
+    }) &&
+    !preferHistory
   ) {
     void storeCachedAnswer({
       questionText: message,
