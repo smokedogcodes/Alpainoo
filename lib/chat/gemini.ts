@@ -10,28 +10,46 @@ function extractJson(text: string): GeminiChatResult | null {
   const cleaned = text.replace(/```json|```/g, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    const parsed = JSON.parse(cleaned.slice(start, end + 1));
-    return {
-      answer: String(parsed.answer || "").trim(),
-      canAnswer: Boolean(parsed.canAnswer),
-      suggestTicket: Boolean(parsed.suggestTicket),
-    };
-  } catch {
-    return null;
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(cleaned.slice(start, end + 1));
+      const answer = String(parsed.answer || "").trim();
+      if (answer) {
+        return {
+          answer,
+          canAnswer: Boolean(parsed.canAnswer),
+          suggestTicket: Boolean(parsed.suggestTicket),
+        };
+      }
+    } catch {
+      // fall through to salvage truncated JSON
+    }
   }
+
+  // Gemini 3 thinking can truncate mid-JSON when the shared token budget is tight.
+  const salvage = cleaned.match(/"answer"\s*:\s*"((?:\\.|[^"\\])*)/);
+  if (salvage?.[1]) {
+    const answer = salvage[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .trim();
+    if (answer) {
+      return { answer, canAnswer: true, suggestTicket: false };
+    }
+  }
+  return null;
 }
 
-/** Current stable Flash endpoints for new API keys (Gemini 3.x). */
+/** Prefer lite / widely available Flash IDs; GEMINI_MODEL overrides first pick. */
 function defaultModelCandidates() {
   const preferred = process.env.GEMINI_MODEL?.trim();
   const defaults = [
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
     "gemini-3-flash-preview",
   ];
   if (preferred) return [preferred, ...defaults.filter((m) => m !== preferred)];
@@ -60,8 +78,8 @@ async function listGenerateContentModels(apiKey: string): Promise<string[]> {
       const score = (n: string) => {
         let s = 0;
         if (/flash/i.test(n) && !/image|tts|live|audio|omni/i.test(n)) s += 10;
+        if (/lite/i.test(n)) s += 6;
         if (/3\.7|3\.6|3\.5|3\.1|^gemini-3/i.test(n)) s += 5;
-        if (/lite/i.test(n)) s += 1;
         return -s;
       };
       return score(a) - score(b);
@@ -109,7 +127,8 @@ Respond with ONLY valid JSON:
   let models = defaultModelCandidates();
   const discovered = await listGenerateContentModels(key);
   if (discovered.length) {
-    models = Array.from(new Set([...models, ...discovered]));
+    // Prefer discovered flash-lite first, then static defaults.
+    models = Array.from(new Set([...discovered, ...models]));
   }
 
   let lastError: unknown;
@@ -118,12 +137,23 @@ Respond with ONLY valid JSON:
     try {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
+        // Gemini 3 shares maxOutputTokens with thinking; keep budget high + minimal thinking.
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+          // Not in @google/generative-ai 0.24 types yet; REST accepts it under generationConfig.
+          thinkingConfig: { thinkingLevel: "minimal" },
+        } as Parameters<GoogleGenerativeAI["getGenerativeModel"]>[0]["generationConfig"],
       });
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       const parsed = extractJson(text);
-      if (parsed?.answer) return parsed;
+      if (parsed?.answer) {
+        console.info(`[gemini] model ${modelName} ok`);
+        return parsed;
+      }
+      console.warn(`[gemini] model ${modelName} returned unparseable text`);
       return {
         answer: text.slice(0, 800) || "I could not form a clear answer.",
         canAnswer: false,
