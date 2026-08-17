@@ -207,6 +207,26 @@ model KnowledgeArticle {
   @@index([category])
 }
 
+/// Cached Q&A pairs so similar support questions can skip Gemini.
+model ChatAnswerCache {
+  id                 String    @id @default(cuid())
+  questionText       String
+  questionNormalized String
+  answer             String
+  source             String    @default("gemini")
+  intent             String?
+  keywords           String    @default("[]")
+  hitCount           Int       @default(0)
+  lastHitAt          DateTime?
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([questionNormalized])
+  @@index([active])
+  @@index([hitCount])
+}
+
 model SupportTicket {
   id           String       @id @default(cuid())
   ticketNumber String       @unique

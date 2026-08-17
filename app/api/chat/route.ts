@@ -5,6 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { detectIntent, scoreKnowledgeMatch, KB_MATCH_THRESHOLD } from "@/lib/chat/intent";
 import { askGemini } from "@/lib/chat/gemini";
+import {
+  findCachedAnswer,
+  recordCacheHit,
+  shouldCacheAnswer,
+  storeCachedAnswer,
+} from "@/lib/chat/answer-cache";
 import { resolveChatSession, nextTicketNumber, CHAT_SESSION_COOKIE } from "@/lib/chat/session";
 import { notifyTicketCreated } from "@/lib/email/tickets";
 
@@ -267,6 +273,32 @@ export async function POST(req: Request) {
     );
   }
 
+  const cached = await findCachedAnswer(message);
+  if (cached) {
+    await recordCacheHit(cached.id);
+    await prisma.chatMessage.create({
+      data: {
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: cached.answer,
+        intent: cached.intent || intent,
+        source: "cache",
+      },
+    });
+    return jsonWithSession(
+      {
+        sessionId: chatSession.id,
+        reply: cached.answer,
+        source: "cache",
+        intent: cached.intent || intent,
+        requireLogin: false,
+        suggestTicket: false,
+      },
+      chatSession.id,
+      setCookie
+    );
+  }
+
   let context = "";
   if (intent === "product" || intent === "general" || intent === "faq") {
     const products = await prisma.product.findMany({
@@ -305,6 +337,22 @@ export async function POST(req: Request) {
   const reply = suggestTicket
     ? `${gemini.answer}\n\nWould you like me to create a support ticket? (24h TAT for general help)`
     : gemini.answer;
+
+  if (
+    shouldCacheAnswer({
+      answer: gemini.answer,
+      canAnswer: gemini.canAnswer,
+      suggestTicket: gemini.suggestTicket,
+      intent,
+    })
+  ) {
+    void storeCachedAnswer({
+      questionText: message,
+      answer: gemini.answer,
+      source: "gemini",
+      intent,
+    });
+  }
 
   await prisma.chatMessage.create({
     data: {
