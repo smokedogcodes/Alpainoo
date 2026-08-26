@@ -39,7 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <AuthProvider session={session}>
           {children}
           <Toaster richColors position="top-center" />
-          <Analytics />
+          {process.env.VERCEL === "1" ? <Analytics /> : null}
         </AuthProvider>
       </body>
     </html>
