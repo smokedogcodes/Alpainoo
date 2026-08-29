@@ -139,9 +139,11 @@ npm run cf:preview
 | Issue | Fix |
 |-------|-----|
 | Prisma / DB errors on Workers | Confirm `DB` binding + remote migrations applied |
-| Uploads fail | Create R2 bucket `alpainoo-uploads`; binding `UPLOADS` |
+| Uploads fail | Enable R2 in dashboard, create `alpainoo-uploads`, add binding |
 | Wrong Cloudflare account | `wrangler logout` then `login` with elorakart email |
 | Google login fails | Match `AUTH_URL` + OAuth callback to Worker URL |
 | Emails skipped | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` |
+
+**Live Worker (current):** https://alpainoo.smokedog.workers.dev
 
 Audit tables are filled by **app code** (`lib/logging/db-audit.ts`). Postgres trigger SQL is not used on D1.
