@@ -11,15 +11,16 @@ export default function GlobalError({
     <html lang="en">
       <body style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", textAlign: "center" }}>
         <h2>Something went wrong</h2>
-        <p style={{ color: "#6b7280", marginTop: "0.5rem" }}>{error.message || "Unexpected error"}</p>
+        <p style={{ color: "#7a6652", marginTop: "0.5rem" }}>{error.message || "Unexpected error"}</p>
         <button
           type="button"
           onClick={reset}
           style={{
             marginTop: "1.5rem",
             padding: "0.6rem 1.2rem",
-            border: "1px solid #ccc",
-            background: "#faf9f6",
+            border: "1px solid #7a6652",
+            background: "#f5f2e7",
+            color: "#1a4073",
             cursor: "pointer",
           }}
         >

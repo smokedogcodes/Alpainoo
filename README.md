@@ -1,4 +1,4 @@
-# Elorakart
+# Alpainoo
 
 Botanical beauty e-commerce — Next.js 14, Prisma, Auth.js (Google), Razorpay, Shiprocket.
 Database and file storage target: **Hostinger** (MySQL + filesystem uploads) long-term.  
@@ -44,7 +44,7 @@ npm run dev
    ```
 
 Optional local MySQL via Docker: `docker compose up -d` then  
-`DATABASE_URL="mysql://elora:elora@127.0.0.1:3306/elorakart"`.
+`DATABASE_URL="mysql://elora:elora@127.0.0.1:3306/alpainoo"`.
 
 ### 2. File storage (product images)
 Admin uploads go to `public/uploads/products/` and are served as `/uploads/products/...`.  

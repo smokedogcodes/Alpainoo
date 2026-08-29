@@ -33,7 +33,7 @@ export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
     {
       role: "assistant",
       content:
-        "Hi! I am Elorakart support. Ask about shipping, products, or policies. For your orders, please sign in first.",
+        "Hi! I am Alpainoo support. Ask about shipping, products, or policies. For your orders, please sign in first.",
     },
   ]);
   const [suggestTicket, setSuggestTicket] = useState(false);
@@ -160,7 +160,7 @@ export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
           )}
         >
           <div className="border-b border-border/50 bg-sage px-4 py-3 text-white">
-            <p className="font-display text-lg">Elorakart Support</p>
+            <p className="font-display text-lg">Alpainoo Support</p>
             <p className="text-xs text-white/80">FAQs · products · your orders</p>
           </div>
 

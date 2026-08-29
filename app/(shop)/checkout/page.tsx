@@ -100,7 +100,7 @@ export default function CheckoutPage() {
         key: result.key,
         amount: Math.round(result.amount * 100),
         currency: result.currency,
-        name: "Elorakart",
+        name: "Alpainoo",
         description: result.orderNumber,
         order_id: result.razorpayOrderId,
         prefill: { email: form.email, name: form.name, contact: phone },

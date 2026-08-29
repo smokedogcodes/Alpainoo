@@ -1,7 +1,7 @@
 -- Per-table transaction audit logs + shared DbAuditLog.
 -- Idempotent: safe to re-run.
 
-CREATE OR REPLACE FUNCTION elorakart_audit_row()
+CREATE OR REPLACE FUNCTION alpainoo_audit_row()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
@@ -118,34 +118,34 @@ $$;
 DROP TRIGGER IF EXISTS trg_audit_order ON "Order";
 CREATE TRIGGER trg_audit_order
 AFTER INSERT OR UPDATE OR DELETE ON "Order"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_order_item ON "OrderItem";
 CREATE TRIGGER trg_audit_order_item
 AFTER INSERT OR UPDATE OR DELETE ON "OrderItem"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_shipment ON "Shipment";
 CREATE TRIGGER trg_audit_shipment
 AFTER INSERT OR UPDATE OR DELETE ON "Shipment"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_product ON "Product";
 CREATE TRIGGER trg_audit_product
 AFTER INSERT OR UPDATE OR DELETE ON "Product"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_stock_log ON "StockLog";
 CREATE TRIGGER trg_audit_stock_log
 AFTER INSERT OR UPDATE OR DELETE ON "StockLog"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_user ON "User";
 CREATE TRIGGER trg_audit_user
 AFTER INSERT OR UPDATE OR DELETE ON "User"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();
 
 DROP TRIGGER IF EXISTS trg_audit_support_ticket ON "SupportTicket";
 CREATE TRIGGER trg_audit_support_ticket
 AFTER INSERT OR UPDATE OR DELETE ON "SupportTicket"
-FOR EACH ROW EXECUTE FUNCTION elorakart_audit_row();
+FOR EACH ROW EXECUTE FUNCTION alpainoo_audit_row();

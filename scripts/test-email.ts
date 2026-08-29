@@ -14,7 +14,7 @@ async function main() {
 
   const result = await sendTransactionalEmail({
     to,
-    subject: "Elorakart email test",
+    subject: "Alpainoo email test",
     text: "If you received this, transactional email is working.",
     html: "<p>If you received this, <strong>transactional email</strong> is working.</p>",
   });

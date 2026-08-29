@@ -110,6 +110,14 @@ export async function upsertProduct(formData: FormData) {
       meta: { sku: rest.sku, stock },
     })
   );
+  void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
+    writeDbAudit({
+      tableName: "Product",
+      operation: id ? "UPDATE" : "INSERT",
+      rowId: productId,
+      newData: { id: productId, title, stock, sku: rest.sku },
+    })
+  );
 }
 
 export async function toggleHideProduct(id: string, isHidden: boolean) {

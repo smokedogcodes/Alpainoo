@@ -21,10 +21,10 @@ export async function GET(req: Request) {
     where: {
       isHidden: false,
       OR: [
-        { title: { contains: q, mode: "insensitive" } },
-        { brand: { contains: q, mode: "insensitive" } },
-        { category: { contains: q, mode: "insensitive" } },
-        { sku: { contains: q, mode: "insensitive" } },
+        { title: { contains: q } },
+        { brand: { contains: q } },
+        { category: { contains: q } },
+        { sku: { contains: q } },
       ],
     },
     orderBy: [{ reviewCount: "desc" }, { title: "asc" }],

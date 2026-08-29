@@ -1,9 +1,7 @@
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { storeProductImage } from "@/lib/storage/uploads";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -50,9 +48,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many files" }, { status: 400 });
   }
 
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "products");
-  await mkdir(uploadDir, { recursive: true });
-
   const urls: string[] = [];
   try {
     for (const file of files) {
@@ -60,7 +55,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `File too large: ${file.name}` }, { status: 400 });
       }
       const buffer = Buffer.from(await file.arrayBuffer());
-      // Reject obvious polyglot / script payloads near file head
       const head = buffer.subarray(0, Math.min(512, buffer.length)).toString("latin1");
       if (/<\s*script/i.test(head) || /<\?php/i.test(head)) {
         return NextResponse.json({ error: "File failed security checks" }, { status: 400 });
@@ -77,9 +71,7 @@ export async function POST(req: Request) {
             : detected === "image/webp"
               ? "webp"
               : "gif";
-      const filename = `${randomUUID()}.${ext}`;
-      await writeFile(path.join(uploadDir, filename), buffer);
-      urls.push(`/uploads/products/${filename}`);
+      urls.push(await storeProductImage(buffer, detected, ext));
     }
 
     const { logSuccess } = await import("@/lib/logging/system-log");

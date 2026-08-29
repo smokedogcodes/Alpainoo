@@ -4,7 +4,7 @@ const p = new PrismaClient();
   for (const email of ["elorakart1@gmail.com", "elolrakart1@gmail.com"]) {
     const u = await p.user.upsert({
       where: { email },
-      create: { email, name: "Elorakart Admin", role: "ADMIN" },
+      create: { email, name: "Alpainoo Admin", role: "ADMIN" },
       update: { role: "ADMIN" },
     });
     console.log("ok", u.email, u.role, u.id);

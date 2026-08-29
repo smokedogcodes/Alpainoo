@@ -58,6 +58,6 @@ export const useCart = create<CartState>()(
       count: () => get().items.reduce((n, i) => n + i.quantity, 0),
       subtotal: () => get().items.reduce((n, i) => n + i.price * i.quantity, 0),
     }),
-    { name: "elorakart-cart" }
+    { name: "alpainoo-cart" }
   )
 );

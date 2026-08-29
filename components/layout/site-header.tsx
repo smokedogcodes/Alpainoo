@@ -121,7 +121,7 @@ export function SiteHeader({
             <SheetContent side="left" className="flex flex-col overflow-y-auto bg-cream p-0">
               <SheetHeader>
                 <SheetTitle className="font-display text-2xl tracking-tight text-sage">
-                  Elorakart
+                  Alpainoo
                 </SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-4 pb-8">
@@ -183,7 +183,7 @@ export function SiteHeader({
             </SheetContent>
           </Sheet>
           <Link href="/" className="font-display text-2xl tracking-tight text-sage md:text-3xl">
-            Elorakart
+            Alpainoo
           </Link>
         </div>
 

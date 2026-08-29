@@ -14,13 +14,13 @@ export function SiteFooter() {
     <footer className="mt-0 border-t border-border/30 bg-surface-container">
       <div className="mx-auto grid max-w-store gap-10 px-4 py-14 md:grid-cols-3 md:px-6">
         <div>
-          <p className="font-display text-3xl tracking-tight text-sage">Elorakart</p>
+          <p className="font-display text-3xl tracking-tight text-sage">Alpainoo</p>
           <p className="mt-3 text-sm leading-relaxed text-muted">
             123 Promenade Street
             <br />
             California, CA 12345
           </p>
-          <p className="mt-3 text-sm text-muted">contactus@elorakart.com</p>
+          <p className="mt-3 text-sm text-muted">contactus@alpainoo.com</p>
           <ul className="mt-4 flex flex-wrap gap-3 text-sm text-muted">
             <li><Link href={opaqueHref("/sale")} className="font-medium text-price-sale hover:underline">Sale</Link></li>
             <li><Link href={opaqueHref("/products")} className="hover:underline hover:text-sage">Shop</Link></li>
@@ -66,7 +66,7 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="flex flex-col items-center justify-between gap-2 border-t border-border/40 px-4 py-4 text-xs uppercase tracking-widest text-muted sm:flex-row md:px-6">
-        <p>© {new Date().getFullYear()} Elorakart. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} Alpainoo. All rights reserved.</p>
         <div className="flex gap-4">
           <Link href={opaqueHref("/about")}>Privacy Policy</Link>
           <Link href={opaqueHref("/about")}>Terms</Link>

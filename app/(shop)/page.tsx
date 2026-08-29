@@ -36,7 +36,7 @@ export default async function HomePage() {
           <HeroOrb>
             <div className="ambient-shadow flex h-60 w-60 flex-col items-center justify-center rounded-full bg-blush px-7 md:h-[19.5rem] md:w-[19.5rem] md:px-10">
               <p className="font-display text-2xl italic font-normal tracking-wide text-foreground/75 md:text-[1.75rem]">
-                Elorakart
+                Alpainoo
               </p>
               <h1 className="mt-2 font-display text-[1.35rem] font-medium leading-snug tracking-wide text-foreground md:text-[1.85rem] text-balance">
                 Your Ultimate Online Skincare Destination

@@ -2,25 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Stitch “Organic Minimalist” tokens — same CSS var names so existing UI keeps working */
+/* Alpainoo — cream / navy / brown only (class names like sage keep working) */
 :root {
-  --background: #faf9f6;
-  --foreground: #1d1b21;
-  --cream: #faf9f6;
-  --off-white: #f8f1fa;
-  --blush: #f4dacf;
-  --blush-soft: #f7ddd2;
-  --sage: #545f4b;
-  --sage-muted: #6c7863;
-  --terracotta: #964419;
-  --sale: #10b981;
-  --price-sale: #ba1a1a;
-  --muted: #6d5a51;
-  --card: #ffffff;
-  --border: #c5c8be;
+  --background: #f5f2e7;
+  --foreground: #1a4073;
+  --cream: #f5f2e7;
+  --off-white: #f5f2e7;
+  --blush: #f5f2e7;
+  --blush-soft: #ebe6d6;
+  --sage: #1a4073;
+  --sage-muted: #2a5289;
+  --terracotta: #7a6652;
+  --sale: #1a4073;
+  --price-sale: #7a6652;
+  --muted: #7a6652;
+  --card: #f5f2e7;
+  --border: #7a6652;
   --radius: 0.25rem;
-  --surface-low: #f8f1fa;
-  --surface-container: #f2ecf5;
+  --surface-low: #ebe6d6;
+  --surface-container: #ebe6d6;
 }
 
 body {
@@ -35,6 +35,7 @@ h3,
 .font-display {
   font-family: var(--font-eb-garamond), Georgia, serif;
   font-weight: 500;
+  color: var(--foreground);
 }
 
 @layer utilities {
@@ -45,12 +46,13 @@ h3,
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
   .glass-nav {
-    background: rgba(250, 249, 246, 0.96);
+    background: rgba(245, 242, 231, 0.96);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    border-color: color-mix(in srgb, var(--border) 35%, transparent);
   }
   .ambient-shadow {
-    box-shadow: 0 4px 20px -2px rgba(116, 128, 106, 0.08);
+    box-shadow: 0 4px 20px -2px rgba(26, 64, 115, 0.08);
   }
   .animate-slow-zoom {
     animation: slow-zoom 22s ease-in-out infinite alternate;

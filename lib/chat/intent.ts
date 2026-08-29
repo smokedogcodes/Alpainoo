@@ -11,7 +11,7 @@ const PRODUCT_RE =
 
 /** Store-related terms that keep a message in scope even if other words appear. */
 const IN_SCOPE_RE =
-  /\b(elorakart|elora\s*kart|our store|your store|my cart|checkout|wishlist|skincare|skin care|haircare|hair care)\b/i;
+  /\b(alpainoo|elora\s*kart|our store|your store|my cart|checkout|wishlist|skincare|skin care|haircare|hair care)\b/i;
 
 /**
  * Obvious off-topic / out-of-scope asks. Cheap pre-Gemini filter — keep conservative
@@ -27,7 +27,7 @@ const FOLLOW_UP_START_RE =
   /^(yes|yep|yeah|no|nope|ok|okay|sure|thanks|thank you|and|also|what about|how about|same|more|why|when|where|which|how much|how long)\b/i;
 
 export const OFF_TOPIC_REFUSAL =
-  "I'm Elorakart's store assistant — I can only help with our products, orders, shipping, returns, and shopping policies. Please ask something related to Elorakart.";
+  "I'm Alpainoo's store assistant — I can only help with our products, orders, shipping, returns, and shopping policies. Please ask something related to Alpainoo.";
 
 export function isOutOfScope(message: string): boolean {
   const text = message.trim();

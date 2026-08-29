@@ -7,7 +7,7 @@ import { formatINR } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Sale & Offers",
-  description: "Shop discounted serums, creams, haircare and more — limited-time Elorakart offers.",
+  description: "Shop discounted serums, creams, haircare and more — limited-time Alpainoo offers.",
 };
 
 export default async function SalePage() {

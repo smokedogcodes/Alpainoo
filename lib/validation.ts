@@ -63,6 +63,7 @@ export function sanitizeImageUrl(url: string) {
   if (!trimmed) return "";
   if (
     trimmed.startsWith("/uploads/") ||
+    trimmed.startsWith("/api/uploads/") ||
     trimmed.startsWith("/products/") ||
     trimmed.startsWith("/blog/") ||
     trimmed.startsWith("/collections/") ||

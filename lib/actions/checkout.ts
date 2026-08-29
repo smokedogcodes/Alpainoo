@@ -135,7 +135,23 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
           })),
         },
       },
+      include: { items: true },
     });
+
+    void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
+      writeDbAudit({
+        tableName: "Order",
+        operation: "INSERT",
+        rowId: order.id,
+        newData: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          email: order.email,
+          totalAmount: order.totalAmount,
+          orderStatus: order.orderStatus,
+        },
+      })
+    );
 
     void import("@/lib/logging/system-log").then(({ logSuccess }) =>
       logSuccess({

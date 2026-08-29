@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Blog",
-  description: "Skincare routines, serum guides, and haircare tips from Elorakart.",
+  description: "Skincare routines, serum guides, and haircare tips from Alpainoo.",
 };
 
 export default async function BlogPage() {

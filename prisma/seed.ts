@@ -185,9 +185,9 @@ const products = [
     images: ["/products/pink-cream-jar.jpg", "/products/clay-mask-jar.jpg"],
   },
   {
-    title: "Elorakart Botanical Glow Face Serum",
-    slug: "elorakart-botanical-glow-face-serum",
-    brand: "Elorakart",
+    title: "Alpainoo Botanical Glow Face Serum",
+    slug: "alpainoo-botanical-glow-face-serum",
+    brand: "Alpainoo",
     category: "Face Essential",
     volume: "30ml",
     mrp: 1299,
@@ -209,9 +209,9 @@ const products = [
     images: ["/products/botanical-serum.jpg", "/products/dropper-serum.jpg"],
   },
   {
-    title: "Elorakart Mist Bloom Eau de Parfum",
-    slug: "elorakart-mist-bloom-edp",
-    brand: "Elorakart",
+    title: "Alpainoo Mist Bloom Eau de Parfum",
+    slug: "alpainoo-mist-bloom-edp",
+    brand: "Alpainoo",
     category: "Perfume",
     volume: "50ml",
     mrp: 1899,
@@ -259,7 +259,7 @@ A glowing complexion starts with consistency. Begin with a gentle cleanser like 
 
 ## Layer hydration
 
-Serums with hyaluronic acid or botanical oils lock in moisture. Try our **Elorakart Botanical Glow Face Serum** for daily radiance.
+Serums with hyaluronic acid or botanical oils lock in moisture. Try our **Alpainoo Botanical Glow Face Serum** for daily radiance.
 
 ## Seal and protect
 
@@ -331,11 +331,11 @@ async function main() {
       where: { email },
       create: {
         email,
-        name: "Elorakart Admin",
+        name: "Alpainoo Admin",
         role: "ADMIN",
         avatarUrl: null,
       },
-      update: { role: "ADMIN", name: "Elorakart Admin" },
+      update: { role: "ADMIN", name: "Alpainoo Admin" },
     });
   }
 
@@ -442,9 +442,9 @@ async function main() {
     {
       slug: "contact-support",
       title: "Contact support",
-      question: "How do I contact Elorakart support?",
+      question: "How do I contact Alpainoo support?",
       answer:
-        "Use this chat for quick help, or email contactus@elorakart.com. For unresolved issues, create a support ticket from chat and our team will reply within the stated turnaround time.",
+        "Use this chat for quick help, or email contactus@alpainoo.com. For unresolved issues, create a support ticket from chat and our team will reply within the stated turnaround time.",
       keywords: ["contact", "email", "support", "help", "phone"],
       category: "SUPPORT",
     },
@@ -453,7 +453,7 @@ async function main() {
       title: "Ingredients & safety",
       question: "Are your products safe / natural?",
       answer:
-        "Elorakart focuses on botanical-forward formulas. Each product page lists key ingredients, benefits, and usage. If you have allergies, review the ingredients list carefully or ask us about a specific product before purchasing.",
+        "Alpainoo focuses on botanical-forward formulas. Each product page lists key ingredients, benefits, and usage. If you have allergies, review the ingredients list carefully or ask us about a specific product before purchasing.",
       keywords: ["ingredients", "natural", "organic", "safe", "allergy", "botanical"],
       category: "PRODUCT",
     },

@@ -32,8 +32,10 @@ yarn-error.log*
 # prisma
 /prisma/dev.db
 /prisma/dev.db-journal
+/dev.db
+/dev.db-journal
 
-# uploads (Hostinger filesystem storage)
+# uploads (local filesystem fallback)
 /public/uploads/products/*
 !/public/uploads/products/.gitkeep
 

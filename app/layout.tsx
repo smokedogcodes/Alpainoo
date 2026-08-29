@@ -24,8 +24,8 @@ const body = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "Elorakart — Botanical Beauty & Skincare",
-    template: "%s | Elorakart",
+    default: "Alpainoo — Botanical Beauty & Skincare",
+    template: "%s | Alpainoo",
   },
   description: "Your ultimate online skincare destination for serums, haircare, and fragrances.",
 };

@@ -1,12 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
-// Vercel demo: provider = "postgresql" + Neon/Vercel Postgres DATABASE_URL (current)
-// Local SQLite:  provider = "sqlite"      + DATABASE_URL="file:./dev.db"
-// Hostinger:     provider = "mysql"       + DATABASE_URL="mysql://USER:PASS@HOST:3306/DB"
+// Cloudflare D1 (SQLite). Local: DATABASE_URL="file:./dev.db"
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

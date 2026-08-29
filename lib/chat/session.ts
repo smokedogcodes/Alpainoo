@@ -50,4 +50,4 @@ export async function nextTicketNumber() {
   return `TKT-${seq}`;
 }
 
-export const CHAT_SESSION_COOKIE = "elorakart_chat_session";
+export const CHAT_SESSION_COOKIE = "alpainoo_chat_session";

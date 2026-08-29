@@ -1,97 +1,67 @@
-# Deploy Elorakart on Cloudflare Workers
+# Deploy Alpainoo on Cloudflare Workers (free plan)
 
-This app runs on **Cloudflare Workers** via the [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare). Database stays on **Neon PostgreSQL** (same as Vercel).
+Stack: **OpenNext** → Cloudflare Workers, **D1** (SQLite) for data, **R2** for product images.
+Cloudflare Email Routing is receive-only — use **Resend** or **MailChannels** to send mail.
 
-Use the **elorakart Cloudflare account** (the email you use for Cloudflare login).
-
----
-
-## Important: email on Cloudflare
-
-| Service | Free? | Sends order emails? |
-|---------|-------|---------------------|
-| **Cloudflare Email Routing** | Yes | **No** — receive/forward only (`contact@` → Gmail) |
-| **Resend** (recommended) | ~100/day | **Yes** — official Cloudflare Workers partner |
-| **MailChannels** | 100/day | **Yes** — API key + domain DNS on Cloudflare |
-
-The app supports **Resend** and **MailChannels**. Set `EMAIL_PROVIDER=auto` (default) to try MailChannels first, then Resend.
+Use the **elorakart / Alpainoo Cloudflare account** (`npx wrangler login`).
 
 ---
 
-## 1. Prerequisites
-
-- Node.js 18.17+
-- Cloudflare account (log in with elorakart email)
-- Domain added to Cloudflare (e.g. `elorakart.com` or a subdomain)
-- Neon `DATABASE_URL` (unchanged)
-- Google OAuth credentials (same as Vercel)
-- Razorpay / Shiprocket / Gemini keys (same as Vercel)
-
----
-
-## 2. One-time Cloudflare login
+## 1. One-time Cloudflare login
 
 ```bash
 npm install
-npx wrangler login
+npx wrangler logout   # if logged into the wrong account
+npx wrangler login    # elorakart Cloudflare email
 ```
 
-Browser opens → sign in with the **elorakart** Cloudflare account → allow access.
-
 ---
 
-## 3. Configure email (fix “emails not sending”)
-
-### Option A — Resend (recommended, works on Cloudflare + Vercel)
-
-1. Sign up at [resend.com](https://resend.com) (free tier).
-2. **Domains** → Add your domain (must use Cloudflare DNS).
-3. Copy Resend’s **SPF, DKIM, DMARC** records into **Cloudflare → DNS → Records**.
-4. Click **Verify** in Resend until domain shows **Verified**.
-5. **API Keys** → Create key → copy `RESEND_API_KEY`.
-6. Set sender:
-
-   ```env
-   EMAIL_FROM="Elorakart <orders@yourdomain.com>"
-   RESEND_API_KEY="re_..."
-   EMAIL_PROVIDER="resend"
-   ```
-
-7. Test locally:
-
-   ```bash
-   npm run test:email -- elorakart1@gmail.com
-   ```
-
-> Without a verified domain, Resend only sends to addresses you verified in the Resend dashboard — order emails to customers will fail.
-
-### Option B — MailChannels (100 free emails/day)
-
-1. Sign up at [mailchannels.com](https://www.mailchannels.com/).
-2. Add and verify your domain (SPF/DKIM/Domain Lockdown in Cloudflare DNS).
-3. Create an API key → `MAILCHANNELS_API_KEY`.
-4. Set:
-
-   ```env
-   EMAIL_FROM="Elorakart <orders@yourdomain.com>"
-   MAILCHANNELS_API_KEY="..."
-   EMAIL_PROVIDER="mailchannels"
-   ```
-
-### Optional — receive mail with Cloudflare Email Routing
-
-Cloudflare Dashboard → **Email** → **Email Routing** → route `contact@yourdomain.com` → `elorakart1@gmail.com`.  
-This does **not** send order confirmations; use Resend/MailChannels for that.
-
----
-
-## 4. Set Worker secrets (production env)
-
-Copy `.dev.vars.example` → `.dev.vars` for local Cloudflare preview, then push secrets to Workers:
+## 2. Create D1 + R2
 
 ```bash
-# Required
-npx wrangler secret put DATABASE_URL
+npx wrangler d1 create alpainoo-db
+npx wrangler r2 bucket create alpainoo-uploads
+```
+
+After creating D1, enable **R2** in the Cloudflare dashboard (Storage → R2 → Purchase / Enable free tier), then:
+
+```bash
+npx wrangler r2 bucket create alpainoo-uploads
+```
+
+Add to `wrangler.jsonc`:
+
+```jsonc
+"r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "alpainoo-uploads" }]
+```
+
+Until R2 is enabled, admin uploads use the local filesystem fallback (Workers have no disk — enable R2 before relying on uploads in production).
+
+Apply schema to **remote** D1:
+
+```bash
+# Generate SQL from Prisma, then apply with wrangler:
+npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/0001_init.sql
+npx wrangler d1 execute alpainoo-db --remote --file=prisma/migrations/0001_init.sql
+```
+
+Seed catalog (optional; run against local SQLite first, or write a D1 seed script):
+
+```bash
+# Local SQLite file for next dev
+set DATABASE_URL=file:./dev.db
+npx prisma db push
+npm run db:seed
+```
+
+For remote seed, use `wrangler d1 execute` with INSERT statements, or a small script using the D1 HTTP API.
+
+---
+
+## 3. Secrets
+
+```bash
 npx wrangler secret put AUTH_SECRET
 npx wrangler secret put AUTH_GOOGLE_ID
 npx wrangler secret put AUTH_GOOGLE_SECRET
@@ -99,8 +69,8 @@ npx wrangler secret put AUTH_URL
 npx wrangler secret put NEXT_PUBLIC_APP_URL
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put EMAIL_FROM
-
-# Payments / shipping / chat (same as Vercel)
+npx wrangler secret put EMAIL_PROVIDER
+npx wrangler secret put ADMIN_EMAIL
 npx wrangler secret put RAZORPAY_KEY_ID
 npx wrangler secret put RAZORPAY_KEY_SECRET
 npx wrangler secret put RAZORPAY_WEBHOOK_SECRET
@@ -108,15 +78,36 @@ npx wrangler secret put NEXT_PUBLIC_RAZORPAY_KEY_ID
 npx wrangler secret put SHIPROCKET_EMAIL
 npx wrangler secret put SHIPROCKET_PASSWORD
 npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put ADMIN_EMAIL
 ```
 
-`AUTH_URL` and `NEXT_PUBLIC_APP_URL` = your Cloudflare URL, e.g. `https://elorakart.your-subdomain.workers.dev` or custom domain.
+Set `AUTH_URL` and `NEXT_PUBLIC_APP_URL` to your Worker URL, e.g. `https://alpainoo.<account>.workers.dev`.
 
-Update **Google OAuth** authorized redirect URI:
+Google OAuth redirect URI:
 
 ```text
-https://YOUR-CLOUDFLARE-URL/api/auth/callback/google
+https://alpainoo.<account>.workers.dev/api/auth/callback/google
+```
+
+**Note:** `DATABASE_URL` is **not** required on Workers — Prisma uses the `DB` D1 binding. Keep `DATABASE_URL=file:./dev.db` only for local `next dev` / seed.
+
+---
+
+## 4. Email (order notifications)
+
+| Service | Role |
+|---------|------|
+| Cloudflare Email Routing | Receive/forward only |
+| Resend (recommended) | Send ~100/day free — add DNS in Cloudflare |
+| MailChannels | Send 100/day free |
+
+```env
+EMAIL_PROVIDER=auto
+EMAIL_FROM="Alpainoo <orders@yourdomain.com>"
+RESEND_API_KEY=re_...
+```
+
+```bash
+npm run test:email -- you@example.com
 ```
 
 ---
@@ -127,57 +118,30 @@ https://YOUR-CLOUDFLARE-URL/api/auth/callback/google
 npm run cf:deploy
 ```
 
-First deploy may take a few minutes. Wrangler prints the live URL.
+Prefer **WSL/Linux** if Windows OpenNext builds are flaky.
 
-### Custom domain
-
-Cloudflare Dashboard → **Workers & Pages** → **elorakart** → **Settings** → **Domains & Routes** → Add `elorakart.com` (or subdomain).
-
-Then update `AUTH_URL`, `NEXT_PUBLIC_APP_URL`, and Google OAuth redirect to the custom domain.
+Custom domain: Workers → **alpainoo** → Domains → add hostname, then update OAuth + `AUTH_URL`.
 
 ---
 
-## 6. Preview locally (Workers runtime)
+## 6. Local preview (Workers runtime)
 
 ```bash
+# Copy secrets into .dev.vars (never commit)
+cp .dev.vars.example .dev.vars
 npm run cf:preview
 ```
-
-Uses `.dev.vars` for bindings/secrets.
-
----
-
-## 7. GitHub auto-deploy (optional)
-
-1. Cloudflare Dashboard → **Workers & Pages** → **Create** → Connect GitHub repo `elorakart/Elorakart`.
-2. Build command: `npm run cf:deploy` or use OpenNext’s documented CI setup.
-3. Add all secrets in **Settings → Variables and Secrets**.
-
----
-
-## 8. Vercel vs Cloudflare
-
-You can keep Vercel as backup. Use the **same Neon database** and **same email keys**. Only change `AUTH_URL` / `NEXT_PUBLIC_APP_URL` per host.
-
-| Command | Platform |
-|---------|----------|
-| `npx vercel --prod` | Vercel |
-| `npm run cf:deploy` | Cloudflare Workers |
 
 ---
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Emails skipped in logs | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` on the host |
-| Resend “domain not verified” | Add DNS records in Cloudflare, verify in Resend |
-| Google login fails | `AUTH_URL` must match live URL; add callback URI in Google Console |
-| Build fails on Cloudflare | Ensure `@opennextjs/cloudflare` and `wrangler` are installed |
-| Prisma errors | `DATABASE_URL` must be set as a Worker **secret** |
+| Issue | Fix |
+|-------|-----|
+| Prisma / DB errors on Workers | Confirm `DB` binding + remote migrations applied |
+| Uploads fail | Create R2 bucket `alpainoo-uploads`; binding `UPLOADS` |
+| Wrong Cloudflare account | `wrangler logout` then `login` with elorakart email |
+| Google login fails | Match `AUTH_URL` + OAuth callback to Worker URL |
+| Emails skipped | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` |
 
-Run email test after any change:
-
-```bash
-npm run test:email -- your-email@gmail.com
-```
+Audit tables are filled by **app code** (`lib/logging/db-audit.ts`). Postgres trigger SQL is not used on D1.

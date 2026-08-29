@@ -51,9 +51,9 @@ const faqs = [
   {
     slug: "contact-support",
     title: "Contact support",
-    question: "How do I contact Elorakart support?",
+    question: "How do I contact Alpainoo support?",
     answer:
-      "Use this chat for quick help, or email contactus@elorakart.com. For unresolved issues, create a support ticket from chat and our team will reply within the stated turnaround time.",
+      "Use this chat for quick help, or email contactus@alpainoo.com. For unresolved issues, create a support ticket from chat and our team will reply within the stated turnaround time.",
     keywords: ["contact", "email", "support", "help", "phone"],
     category: "SUPPORT",
   },
@@ -62,7 +62,7 @@ const faqs = [
     title: "Ingredients & safety",
     question: "Are your products safe / natural?",
     answer:
-      "Elorakart focuses on botanical-forward formulas. Each product page lists key ingredients, benefits, and usage. If you have allergies, review the ingredients list carefully or ask us about a specific product before purchasing.",
+      "Alpainoo focuses on botanical-forward formulas. Each product page lists key ingredients, benefits, and usage. If you have allergies, review the ingredients list carefully or ask us about a specific product before purchasing.",
     keywords: ["ingredients", "natural", "organic", "safe", "allergy", "botanical"],
     category: "PRODUCT",
   },

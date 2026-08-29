@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-off-white">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-cream px-4 py-3 lg:hidden">
         <Link href="/admin" className="font-display text-xl">
-          Elorakart Admin
+          Alpainoo Admin
         </Link>
         <AdminMobileNav />
       </header>
@@ -24,7 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <aside className="sticky top-0 hidden h-screen w-56 shrink-0 overflow-y-auto border-r border-border bg-cream lg:block">
           <div className="p-5">
             <Link href="/" className="font-display text-2xl">
-              Elorakart
+              Alpainoo
             </Link>
             <p className="text-xs text-muted">Admin</p>
           </div>

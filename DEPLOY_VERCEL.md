@@ -1,4 +1,4 @@
-# Deploy Elorakart to Vercel (demo)
+# Deploy Alpainoo to Vercel (demo)
 
 Follow these steps in order. Total time ~20–40 minutes.
 
@@ -17,7 +17,7 @@ SQLite does **not** work on Vercel. This project is set to **PostgreSQL**.
 ## Step 1 — Create a free Postgres database (Neon)
 
 1. Go to https://neon.tech → Sign up / Log in  
-2. **Create project** → name it `elorakart`  
+2. **Create project** → name it `alpainoo`  
 3. Copy the **connection string** (looks like):
    ```
    postgresql://user:password@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require
@@ -31,21 +31,21 @@ SQLite does **not** work on Vercel. This project is set to **PostgreSQL**.
 In PowerShell (from the project folder):
 
 ```powershell
-cd C:\Users\balme\OneDrive\Desktop\elorakart
+cd C:\Users\balme\OneDrive\Desktop\alpainoo
 git init
 git add .
-git commit -m "Prepare Elorakart for Vercel demo deploy"
+git commit -m "Prepare Alpainoo for Vercel demo deploy"
 ```
 
 Then on GitHub:
 
-1. https://github.com/new → create repo `elorakart` (private is fine)  
+1. https://github.com/new → create repo `alpainoo` (private is fine)  
 2. Do **not** add README/license (repo should be empty)  
 3. Connect and push:
 
 ```powershell
 git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/elorakart.git
+git remote add origin https://github.com/YOUR_USERNAME/alpainoo.git
 git push -u origin main
 ```
 
@@ -56,7 +56,7 @@ Replace `YOUR_USERNAME` with your GitHub username.
 ## Step 3 — Import project on Vercel
 
 1. https://vercel.com/new  
-2. **Import** the `elorakart` GitHub repo  
+2. **Import** the `alpainoo` GitHub repo  
 3. Framework: **Next.js** (auto-detected)  
 4. **Do not deploy yet** — click **Environment Variables** first  
 
@@ -75,7 +75,7 @@ In the Vercel project → **Settings → Environment Variables**, add these for 
 | `ADMIN_EMAIL` | Your Gmail (admin bootstrap + CC on order emails) |
 | `ADMIN_DEV_BYPASS` | `true` (so you can open `/admin` without Google for the demo) |
 | `RESEND_API_KEY` | From https://resend.com (required for order emails) |
-| `EMAIL_FROM` | e.g. `Elorakart <onboarding@resend.dev>` or a verified domain sender |
+| `EMAIL_FROM` | e.g. `Alpainoo <onboarding@resend.dev>` or a verified domain sender |
 | `GEMINI_API_KEY` | Google AI Studio / Gemini API key for the support chatbot |
 
 Optional for demo (can leave empty):
@@ -89,9 +89,9 @@ Then click **Deploy**.
 
 ## Step 5 — After first deploy succeeds
 
-1. Open the URL Vercel gives you, e.g. `https://elorakart-xxx.vercel.app`  
+1. Open the URL Vercel gives you, e.g. `https://alpainoo-xxx.vercel.app`  
 2. Go back to Vercel → **Settings → Environment Variables** and set:
-   - `AUTH_URL` = `https://elorakart-xxx.vercel.app`
+   - `AUTH_URL` = `https://alpainoo-xxx.vercel.app`
    - `NEXT_PUBLIC_APP_URL` = same  
 3. **Redeploy** (Deployments → … → Redeploy) so those URLs apply  
 
@@ -104,7 +104,7 @@ Vercel builds the empty tables (`prisma db push` runs on build). You still need 
 ### Option A — from your PC (easiest)
 
 ```powershell
-cd C:\Users\balme\OneDrive\Desktop\elorakart
+cd C:\Users\balme\OneDrive\Desktop\alpainoo
 # Temporarily put the SAME Neon DATABASE_URL into .env
 npx prisma db push
 npm run db:seed

@@ -23,10 +23,10 @@ export default async function ProductsPage({
 
   if (query) {
     where.OR = [
-      { title: { contains: query, mode: "insensitive" } },
-      { brand: { contains: query, mode: "insensitive" } },
-      { category: { contains: query, mode: "insensitive" } },
-      { sku: { contains: query, mode: "insensitive" } },
+      { title: { contains: query } },
+      { brand: { contains: query } },
+      { category: { contains: query } },
+      { sku: { contains: query } },
     ];
   }
   if (searchParams.category) where.category = searchParams.category;

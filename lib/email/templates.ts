@@ -21,7 +21,7 @@ export type OrderEmailPayload = {
 };
 
 function appBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://elorakart-gamma.vercel.app").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_APP_URL || "https://alpainoo-gamma.vercel.app").replace(/\/$/, "");
 }
 
 export function orderUrl(orderId: string) {
@@ -65,7 +65,7 @@ function layout(title: string, bodyHtml: string, order: OrderEmailPayload) {
 <html>
 <body style="margin:0;padding:0;background:#f7f5f0;font-family:Georgia,'Times New Roman',serif;">
   <div style="max-width:560px;margin:24px auto;background:#fffaf3;border:1px solid #e8e4dc;padding:28px;">
-    <p style="margin:0 0 4px;font-size:22px;color:#5a6b4f;letter-spacing:0.02em;">Elorakart</p>
+    <p style="margin:0 0 4px;font-size:22px;color:#5a6b4f;letter-spacing:0.02em;">Alpainoo</p>
     <h1 style="margin:0 0 16px;font-size:20px;font-weight:normal;color:#2c2a26;">${escapeHtml(title)}</h1>
     ${bodyHtml}
     <p style="margin:20px 0 0;">
@@ -78,7 +78,7 @@ function layout(title: string, bodyHtml: string, order: OrderEmailPayload) {
 }
 
 function textFooter(order: OrderEmailPayload) {
-  return `\n\nView order: ${orderUrl(order.orderId)}\nOrder ${order.orderNumber} · ${formatINR(order.totalAmount)}\n— Elorakart`;
+  return `\n\nView order: ${orderUrl(order.orderId)}\nOrder ${order.orderNumber} · ${formatINR(order.totalAmount)}\n— Alpainoo`;
 }
 
 export function orderPaidEmail(order: OrderEmailPayload) {

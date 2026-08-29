@@ -60,6 +60,20 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
     })
   );
 
+  void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
+    writeDbAudit({
+      tableName: "Order",
+      operation: "UPDATE",
+      rowId: updated.order.id,
+      newData: {
+        id: updated.order.id,
+        paymentStatus: "PAID",
+        orderStatus: updated.order.orderStatus,
+        orderNumber: updated.order.orderNumber,
+      },
+    })
+  );
+
   // Notify once on first successful payment (fail-soft)
   void import("@/lib/email/orders")
     .then(({ notifyOrderPaid }) => notifyOrderPaid(updated.order))

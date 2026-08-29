@@ -114,16 +114,16 @@ export async function POST(req: Request) {
 
     // Do not open tickets from purely off-topic threads unless the user labeled it as store support.
     const subject = (parsed.data.ticketSubject || "").toLowerCase();
-    const asksElorakartSupport =
-      /\b(elorakart|order|shipping|refund|return|product|payment|delivery|support|help|ticket)\b/i.test(
+    const asksAlpainooSupport =
+      /\b(alpainoo|order|shipping|refund|return|product|payment|delivery|support|help|ticket)\b/i.test(
         subject
       ) || parsed.data.ticketCategory === "ORDER";
     const recentOnTopic = recent.some(
       (m) => m.role === "user" && m.intent && m.intent !== "off_topic"
     );
-    if (!asksElorakartSupport && !recentOnTopic) {
+    if (!asksAlpainooSupport && !recentOnTopic) {
       const reply =
-        "I can only create support tickets for Elorakart store issues (orders, products, shipping, policies). Please ask about your Elorakart concern first.";
+        "I can only create support tickets for Alpainoo store issues (orders, products, shipping, policies). Please ask about your Alpainoo concern first.";
       await prisma.chatMessage.create({
         data: {
           sessionId: chatSession.id,
@@ -154,7 +154,7 @@ export async function POST(req: Request) {
     const category = parsed.data.ticketCategory || "GENERAL";
     const tatHours = category === "ORDER" ? 48 : 24;
     const dueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000);
-    const email = userEmail || "guest@elorakart.local";
+    const email = userEmail || "guest@alpainoo.local";
     const ticketNumber = await nextTicketNumber();
 
     const ticket = await prisma.supportTicket.create({

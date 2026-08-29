@@ -11,7 +11,7 @@ export function getEmailProvider(): EmailProviderName {
 export function getEmailFrom() {
   return (
     process.env.EMAIL_FROM?.trim() ||
-    "Elorakart <onboarding@resend.dev>"
+    "Alpainoo <onboarding@resend.dev>"
   );
 }
 
@@ -21,7 +21,7 @@ export function parseEmailFrom(from: string) {
   if (match) {
     return { name: match[1].trim().replace(/^["']|["']$/g, ""), email: match[2].trim() };
   }
-  return { name: "Elorakart", email: from.trim() };
+  return { name: "Alpainoo", email: from.trim() };
 }
 
 /** Admin CC list: ADMIN_EMAIL + store owners, excluding the customer. */

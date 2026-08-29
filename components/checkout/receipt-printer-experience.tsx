@@ -52,7 +52,7 @@ function ReceiptBody({ order }: { order: ReceiptOrderData }) {
   return (
     <div className="relative z-10 space-y-4 text-[11px] leading-relaxed text-foreground">
       <header className="text-center">
-        <p className="font-display text-2xl tracking-wide text-sage">Elorakart</p>
+        <p className="font-display text-2xl tracking-wide text-sage">Alpainoo</p>
         <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-muted">
           Natural skincare
         </p>
@@ -169,7 +169,7 @@ export function ReceiptPrinterExperience({
         <ReceiptPrinter.Machine>
           <ReceiptPrinter.Header>
             <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-sage">
-              Elorakart
+              Alpainoo
             </span>
           </ReceiptPrinter.Header>
           <ReceiptPrinter.Screen>
