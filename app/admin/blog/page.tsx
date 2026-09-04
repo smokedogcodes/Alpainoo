@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listAdminPosts } from "@/lib/db/blog";
 import { Button } from "@/components/ui/button";
 import { BlogAdminActions } from "@/components/admin/blog-actions";
 
 export default async function AdminBlogPage() {
-  const posts = await prisma.blogPost.findMany({ orderBy: { updatedAt: "desc" } });
+  const posts = await listAdminPosts();
 
   return (
     <div className="space-y-6">

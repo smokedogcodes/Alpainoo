@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/prisma";
+import { asD1, getD1, sqlNow } from "@/lib/db/d1";
 
-/** App-level audit (D1 has no Postgres triggers). Best-effort; never throws. */
+/** App-level audit. Best-effort; never throws. */
 export async function writeDbAudit(input: {
   tableName: string;
   operation: "INSERT" | "UPDATE" | "DELETE" | string;
@@ -12,7 +12,70 @@ export async function writeDbAudit(input: {
     const id = `aud_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     const oldData = input.oldData == null ? null : JSON.stringify(input.oldData);
     const newData = input.newData == null ? null : JSON.stringify(input.newData);
+    const now = sqlNow();
 
+    const db = await getD1();
+    if (db) {
+      const d1 = asD1(db);
+      await d1
+        .prepare(
+          `INSERT INTO DbAuditLog (id, createdAt, tableName, operation, rowId, oldData, newData)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(id, now, input.tableName, input.operation, input.rowId || null, oldData, newData)
+        .run();
+
+      if (input.tableName === "Order") {
+        await d1
+          .prepare(
+            `INSERT INTO OrderAudit (id, createdAt, operation, orderId, oldData, newData)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(`oa_${id}`, now, input.operation, input.rowId || null, oldData, newData)
+          .run();
+      } else if (input.tableName === "Product" || input.tableName === "StockLog") {
+        const productId =
+          input.tableName === "Product"
+            ? input.rowId
+            : (input.newData as { productId?: string } | null)?.productId ||
+              (input.oldData as { productId?: string } | null)?.productId ||
+              null;
+        await d1
+          .prepare(
+            `INSERT INTO ProductAudit (id, createdAt, operation, productId, oldData, newData)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            `pa_${id}`,
+            now,
+            input.tableName === "StockLog" ? `STOCKLOG_${input.operation}` : input.operation,
+            productId || null,
+            oldData,
+            newData
+          )
+          .run();
+      } else if (input.tableName === "User") {
+        await d1
+          .prepare(
+            `INSERT INTO UserAudit (id, createdAt, operation, userId, oldData, newData)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(`ua_${id}`, now, input.operation, input.rowId || null, oldData, newData)
+          .run();
+      } else if (input.tableName === "SupportTicket") {
+        await d1
+          .prepare(
+            `INSERT INTO SupportTicketAudit (id, createdAt, operation, ticketId, oldData, newData)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(`ta_${id}`, now, input.operation, input.rowId || null, oldData, newData)
+          .run();
+      }
+      return;
+    }
+
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
     await prisma.dbAuditLog.create({
       data: {
         id,
@@ -34,36 +97,6 @@ export async function writeDbAudit(input: {
           newData,
         },
       });
-    } else if (input.tableName === "OrderItem") {
-      const orderId =
-        (input.newData as { orderId?: string } | null)?.orderId ||
-        (input.oldData as { orderId?: string } | null)?.orderId ||
-        null;
-      await prisma.orderItemAudit.create({
-        data: {
-          id: `oia_${id}`,
-          operation: input.operation,
-          orderItemId: input.rowId || null,
-          orderId,
-          oldData,
-          newData,
-        },
-      });
-    } else if (input.tableName === "Shipment") {
-      const orderId =
-        (input.newData as { orderId?: string } | null)?.orderId ||
-        (input.oldData as { orderId?: string } | null)?.orderId ||
-        null;
-      await prisma.shipmentAudit.create({
-        data: {
-          id: `sa_${id}`,
-          operation: input.operation,
-          shipmentId: input.rowId || null,
-          orderId,
-          oldData,
-          newData,
-        },
-      });
     } else if (input.tableName === "Product" || input.tableName === "StockLog") {
       const productId =
         input.tableName === "Product"
@@ -74,7 +107,8 @@ export async function writeDbAudit(input: {
       await prisma.productAudit.create({
         data: {
           id: `pa_${id}`,
-          operation: input.tableName === "StockLog" ? `STOCKLOG_${input.operation}` : input.operation,
+          operation:
+            input.tableName === "StockLog" ? `STOCKLOG_${input.operation}` : input.operation,
           productId: productId || null,
           oldData,
           newData,

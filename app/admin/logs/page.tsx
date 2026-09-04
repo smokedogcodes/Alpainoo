@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
+import { asD1, getD1, toDate } from "@/lib/db/d1";
 
 const LEVELS = ["ERROR", "SUCCESS", "WARN", "INFO"] as const;
 
@@ -34,29 +34,241 @@ type TxnRow = {
   source: string;
 };
 
-async function loadTxnRows(table: string, take: number, skip: number): Promise<{ rows: TxnRow[]; total: number }> {
-  if (table === "Order") {
-    const [rows, total] = await Promise.all([
-      prisma.orderAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.orderAudit.count(),
+type AuditTableConfig = {
+  table: string;
+  source: string;
+  rowLabel: (r: Record<string, unknown>) => string;
+};
+
+const AUDIT_CONFIG: Record<string, AuditTableConfig> = {
+  Order: {
+    table: "OrderAudit",
+    source: "OrderAudit",
+    rowLabel: (r) => (r.orderId != null ? String(r.orderId) : "—"),
+  },
+  OrderItem: {
+    table: "OrderItemAudit",
+    source: "OrderItemAudit",
+    rowLabel: (r) =>
+      r.orderItemId != null
+        ? String(r.orderItemId)
+        : r.orderId != null
+          ? String(r.orderId)
+          : "—",
+  },
+  Shipment: {
+    table: "ShipmentAudit",
+    source: "ShipmentAudit",
+    rowLabel: (r) =>
+      r.shipmentId != null
+        ? String(r.shipmentId)
+        : r.orderId != null
+          ? String(r.orderId)
+          : "—",
+  },
+  Product: {
+    table: "ProductAudit",
+    source: "ProductAudit",
+    rowLabel: (r) => (r.productId != null ? String(r.productId) : "—"),
+  },
+  User: {
+    table: "UserAudit",
+    source: "UserAudit",
+    rowLabel: (r) => (r.userId != null ? String(r.userId) : "—"),
+  },
+  SupportTicket: {
+    table: "SupportTicketAudit",
+    source: "SupportTicketAudit",
+    rowLabel: (r) => (r.ticketId != null ? String(r.ticketId) : "—"),
+  },
+};
+
+function mapTxnRow(
+  r: Record<string, unknown>,
+  source: string,
+  rowLabel: string
+): TxnRow {
+  return {
+    id: String(r.id),
+    createdAt: toDate(r.createdAt),
+    operation: String(r.operation ?? ""),
+    rowLabel,
+    oldData: r.oldData != null ? String(r.oldData) : null,
+    newData: r.newData != null ? String(r.newData) : null,
+    source,
+  };
+}
+
+async function loadTxnRowsD1(
+  db: D1Database,
+  table: string,
+  take: number,
+  skip: number
+): Promise<{ rows: TxnRow[]; total: number }> {
+  const d1 = asD1(db);
+  try {
+    const config = AUDIT_CONFIG[table];
+    if (config) {
+      const [rowsRes, countRes] = await Promise.all([
+        d1
+          .prepare(
+            `SELECT * FROM ${config.table} ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+          )
+          .bind(take, skip)
+          .all(),
+        d1.prepare(`SELECT COUNT(*) as c FROM ${config.table}`).first(),
+      ]);
+      const total = Number((countRes as { c: number } | null)?.c ?? 0);
+      const rows = ((rowsRes.results || []) as Record<string, unknown>[]).map((r) =>
+        mapTxnRow(r, config.source, config.rowLabel(r))
+      );
+      return { rows, total };
+    }
+
+    const [rowsRes, countRes] = await Promise.all([
+      d1
+        .prepare(
+          `SELECT * FROM DbAuditLog ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+        )
+        .bind(take, skip)
+        .all(),
+      d1.prepare(`SELECT COUNT(*) as c FROM DbAuditLog`).first(),
     ]);
-    return {
-      total,
-      rows: rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-        operation: r.operation,
-        rowLabel: r.orderId || "—",
-        oldData: r.oldData,
-        newData: r.newData,
-        source: "OrderAudit",
-      })),
-    };
+    const total = Number((countRes as { c: number } | null)?.c ?? 0);
+    const rows = ((rowsRes.results || []) as Record<string, unknown>[]).map((r) =>
+      mapTxnRow(
+        r,
+        "DbAuditLog",
+        `${String(r.tableName ?? "")}:${r.rowId != null ? String(r.rowId) : "—"}`
+      )
+    );
+    return { rows, total };
+  } catch {
+    return { rows: [], total: 0 };
   }
-  if (table === "OrderItem") {
+}
+
+async function loadTxnRowsPrisma(
+  table: string,
+  take: number,
+  skip: number
+): Promise<{ rows: TxnRow[]; total: number }> {
+  try {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+
+    if (table === "Order") {
+      const [rows, total] = await Promise.all([
+        prisma.orderAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.orderAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.orderId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "OrderAudit",
+        })),
+      };
+    }
+    if (table === "OrderItem") {
+      const [rows, total] = await Promise.all([
+        prisma.orderItemAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.orderItemAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.orderItemId || r.orderId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "OrderItemAudit",
+        })),
+      };
+    }
+    if (table === "Shipment") {
+      const [rows, total] = await Promise.all([
+        prisma.shipmentAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.shipmentAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.shipmentId || r.orderId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "ShipmentAudit",
+        })),
+      };
+    }
+    if (table === "Product") {
+      const [rows, total] = await Promise.all([
+        prisma.productAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.productAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.productId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "ProductAudit",
+        })),
+      };
+    }
+    if (table === "User") {
+      const [rows, total] = await Promise.all([
+        prisma.userAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.userAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.userId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "UserAudit",
+        })),
+      };
+    }
+    if (table === "SupportTicket") {
+      const [rows, total] = await Promise.all([
+        prisma.supportTicketAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+        prisma.supportTicketAudit.count(),
+      ]);
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          operation: r.operation,
+          rowLabel: r.ticketId || "—",
+          oldData: r.oldData,
+          newData: r.newData,
+          source: "SupportTicketAudit",
+        })),
+      };
+    }
+
     const [rows, total] = await Promise.all([
-      prisma.orderItemAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.orderItemAudit.count(),
+      prisma.dbAuditLog.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+      prisma.dbAuditLog.count(),
     ]);
     return {
       total,
@@ -64,102 +276,114 @@ async function loadTxnRows(table: string, take: number, skip: number): Promise<{
         id: r.id,
         createdAt: r.createdAt,
         operation: r.operation,
-        rowLabel: r.orderItemId || r.orderId || "—",
+        rowLabel: `${r.tableName}:${r.rowId || "—"}`,
         oldData: r.oldData,
         newData: r.newData,
-        source: "OrderItemAudit",
+        source: "DbAuditLog",
       })),
     };
+  } catch {
+    return { rows: [], total: 0 };
   }
-  if (table === "Shipment") {
-    const [rows, total] = await Promise.all([
-      prisma.shipmentAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.shipmentAudit.count(),
-    ]);
-    return {
-      total,
-      rows: rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-        operation: r.operation,
-        rowLabel: r.shipmentId || r.orderId || "—",
-        oldData: r.oldData,
-        newData: r.newData,
-        source: "ShipmentAudit",
-      })),
-    };
-  }
-  if (table === "Product") {
-    const [rows, total] = await Promise.all([
-      prisma.productAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.productAudit.count(),
-    ]);
-    return {
-      total,
-      rows: rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-        operation: r.operation,
-        rowLabel: r.productId || "—",
-        oldData: r.oldData,
-        newData: r.newData,
-        source: "ProductAudit",
-      })),
-    };
-  }
-  if (table === "User") {
-    const [rows, total] = await Promise.all([
-      prisma.userAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.userAudit.count(),
-    ]);
-    return {
-      total,
-      rows: rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-        operation: r.operation,
-        rowLabel: r.userId || "—",
-        oldData: r.oldData,
-        newData: r.newData,
-        source: "UserAudit",
-      })),
-    };
-  }
-  if (table === "SupportTicket") {
-    const [rows, total] = await Promise.all([
-      prisma.supportTicketAudit.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-      prisma.supportTicketAudit.count(),
-    ]);
-    return {
-      total,
-      rows: rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-        operation: r.operation,
-        rowLabel: r.ticketId || "—",
-        oldData: r.oldData,
-        newData: r.newData,
-        source: "SupportTicketAudit",
-      })),
-    };
+}
+
+async function loadTxnRows(
+  table: string,
+  take: number,
+  skip: number
+): Promise<{ rows: TxnRow[]; total: number }> {
+  const db = await getD1();
+  if (db) return loadTxnRowsD1(db, table, take, skip);
+  return loadTxnRowsPrisma(table, take, skip);
+}
+
+type SystemLogRow = {
+  id: string;
+  createdAt: Date;
+  level: string;
+  category: string;
+  action: string;
+  message: string;
+  entityType: string | null;
+  entityId: string | null;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  meta: string;
+};
+
+async function loadSystemLogs(
+  levelFilter: string | undefined,
+  category: string | undefined,
+  take: number,
+  skip: number
+): Promise<{ rows: SystemLogRow[]; total: number }> {
+  const db = await getD1();
+  if (db) {
+    try {
+      const d1 = asD1(db);
+      const where: string[] = [];
+      const binds: unknown[] = [];
+      if (levelFilter) {
+        where.push("level = ?");
+        binds.push(levelFilter);
+      }
+      if (category) {
+        where.push("category = ?");
+        binds.push(category);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      const [rowsRes, countRes] = await Promise.all([
+        d1
+          .prepare(
+            `SELECT * FROM SystemLog ${whereSql} ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+          )
+          .bind(...binds, take, skip)
+          .all(),
+        d1
+          .prepare(`SELECT COUNT(*) as c FROM SystemLog ${whereSql}`)
+          .bind(...binds)
+          .first(),
+      ]);
+      const total = Number((countRes as { c: number } | null)?.c ?? 0);
+      const rows = ((rowsRes.results || []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        createdAt: toDate(r.createdAt),
+        level: String(r.level ?? ""),
+        category: String(r.category ?? ""),
+        action: String(r.action ?? ""),
+        message: String(r.message ?? ""),
+        entityType: r.entityType != null ? String(r.entityType) : null,
+        entityId: r.entityId != null ? String(r.entityId) : null,
+        actorUserId: r.actorUserId != null ? String(r.actorUserId) : null,
+        actorEmail: r.actorEmail != null ? String(r.actorEmail) : null,
+        meta: String(r.meta ?? "{}"),
+      }));
+      return { rows, total };
+    } catch {
+      return { rows: [], total: 0 };
+    }
   }
 
-  const [rows, total] = await Promise.all([
-    prisma.dbAuditLog.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
-    prisma.dbAuditLog.count(),
-  ]);
-  return {
-    total,
-    rows: rows.map((r) => ({
-      id: r.id,
-      createdAt: r.createdAt,
-      operation: r.operation,
-      rowLabel: `${r.tableName}:${r.rowId || "—"}`,
-      oldData: r.oldData,
-      newData: r.newData,
-      source: "DbAuditLog",
-    })),
-  };
+  try {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    const where = {
+      ...(levelFilter ? { level: levelFilter } : {}),
+      ...(category ? { category } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      prisma.systemLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+      }),
+      prisma.systemLog.count({ where }),
+    ]);
+    return { rows, total };
+  } catch {
+    return { rows: [], total: 0 };
+  }
 }
 
 export default async function AdminLogsPage({
@@ -236,20 +460,7 @@ export default async function AdminLogsPage({
     );
   }
 
-  const where = {
-    ...(levelFilter ? { level: levelFilter } : {}),
-    ...(category ? { category } : {}),
-  };
-
-  const [rows, total] = await Promise.all([
-    prisma.systemLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take,
-      skip,
-    }),
-    prisma.systemLog.count({ where }),
-  ]);
+  const { rows, total } = await loadSystemLogs(levelFilter, category, take, skip);
   const pages = Math.max(1, Math.ceil(total / take));
 
   return (
