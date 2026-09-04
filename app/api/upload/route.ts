@@ -4,7 +4,8 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { storeProductImage } from "@/lib/storage/uploads";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-const MAX_BYTES = 5 * 1024 * 1024;
+/** After client compress; still reject oversized uploads (D1 2 MB row limit). */
+const MAX_BYTES = 600 * 1024;
 
 const MAGIC: Array<{ mime: string; check: (b: Buffer) => boolean }> = [
   { mime: "image/jpeg", check: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
@@ -96,6 +97,9 @@ export async function POST(req: Request) {
       path: "/api/upload",
       method: "POST",
     });
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Upload failed" },
+      { status: 500 }
+    );
   }
 }

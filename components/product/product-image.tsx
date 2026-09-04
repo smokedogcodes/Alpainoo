@@ -21,6 +21,9 @@ export function ProductImage({
   priority?: boolean;
 }) {
   const imageSrc = src && src.trim() ? src : FALLBACK;
+  // D1/R2 served via API — skip CF image optimizer (quality/path quirks)
+  const unoptimized =
+    imageSrc.startsWith("/api/media/") || imageSrc.startsWith("/api/uploads/");
 
   if (fill) {
     return (
@@ -30,7 +33,8 @@ export function ProductImage({
         fill
         sizes={sizes}
         priority={priority}
-        quality={90}
+        quality={75}
+        unoptimized={unoptimized}
         className={cn("object-cover", className)}
       />
     );
@@ -44,7 +48,8 @@ export function ProductImage({
       height={800}
       sizes={sizes}
       priority={priority}
-      quality={90}
+      quality={75}
+      unoptimized={unoptimized}
       className={cn("h-full w-full object-cover", className)}
     />
   );

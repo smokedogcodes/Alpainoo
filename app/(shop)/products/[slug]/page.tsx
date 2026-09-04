@@ -1,31 +1,75 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Leaf } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { getProductBySlug } from "@/lib/db/products";
 import { formatINR, parseJsonArray } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { PincodeChecker } from "@/components/product/pincode-checker";
 import { ProductGallery } from "@/components/product/product-gallery";
+import { ReviewForm } from "@/components/product/review-form";
+import { WishlistButton } from "@/components/product/wishlist-button";
+import { listApprovedReviews } from "@/lib/actions/reviews";
+import { isInWishlist } from "@/lib/actions/wishlist";
 
 type Props = { params: { slug: string } };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await prisma.product.findUnique({ where: { slug: params.slug } });
+  const product = await getProductBySlug(params.slug);
   if (!product || product.isHidden) return { title: "Product" };
-  return { title: product.title, description: product.description };
+  return {
+    title: product.metaTitle || product.title,
+    description: product.metaDescription || product.description.slice(0, 160),
+  };
 }
 
 export default async function ProductDetailPage({ params }: Props) {
-  const product = await prisma.product.findUnique({ where: { slug: params.slug } });
+  const product = await getProductBySlug(params.slug);
   if (!product || product.isHidden) notFound();
 
   const benefits = parseJsonArray(product.benefits);
   const images = parseJsonArray(product.images);
+  const session = await auth();
+  const [reviews, wished] = await Promise.all([
+    listApprovedReviews(product.id),
+    isInWishlist(product.id),
+  ]);
+
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://alpainoo.com").replace(/\/$/, "");
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.title,
+    description: product.metaDescription || product.description,
+    sku: product.sku,
+    brand: { "@type": "Brand", name: product.brand },
+    image: images.map((src) => (src.startsWith("http") ? src : `${baseUrl}${src}`)),
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "INR",
+      price: product.sellingPrice,
+      availability:
+        product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: `${baseUrl}/products/${product.slug}`,
+    },
+    aggregateRating:
+      product.reviewCount > 0
+        ? {
+            "@type": "AggregateRating",
+            ratingValue: product.rating,
+            reviewCount: product.reviewCount,
+          }
+        : undefined,
+  };
 
   return (
     <div className="mx-auto max-w-store px-4 py-8 pb-28 md:px-6 lg:pb-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <ProductGallery title={product.title} images={images} brand={product.brand} />
         <div>
@@ -58,6 +102,7 @@ export default async function ProductDetailPage({ params }: Props) {
           </ul>
           <div className="mt-8 space-y-4">
             <AddToCartButton product={product} />
+            <WishlistButton productId={product.id} initialWished={wished} />
             <PincodeChecker />
           </div>
         </div>
@@ -87,6 +132,24 @@ export default async function ProductDetailPage({ params }: Props) {
           <p className="text-sm text-muted">
             Rated {product.rating.toFixed(1)} / 5 from {product.reviewCount} reviews.
           </p>
+          <ul className="mt-4 space-y-4">
+            {reviews.map((r) => (
+              <li key={r.id} className="rounded-md border border-border bg-cream p-4 text-sm">
+                <p className="font-medium">
+                  {r.author} · {r.rating}/5
+                </p>
+                {r.title && <p className="mt-1 text-sage">{r.title}</p>}
+                <p className="mt-2 text-foreground/90">{r.body}</p>
+              </li>
+            ))}
+            {!reviews.length && (
+              <li className="text-sm text-muted">No approved reviews yet.</li>
+            )}
+          </ul>
+          <ReviewForm
+            productId={product.id}
+            defaultAuthor={session?.user?.name || session?.user?.email?.split("@")[0] || ""}
+          />
         </TabsContent>
       </Tabs>
     </div>

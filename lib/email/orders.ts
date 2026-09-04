@@ -4,6 +4,7 @@ import {
   cancelRejectedEmail,
   cancelRequestedEmail,
   orderPaidEmail,
+  orderRefundedEmail,
   orderStatusEmail,
   trackingUpdatedEmail,
   type OrderEmailItem,
@@ -92,4 +93,9 @@ export async function notifyCancelRejected(order: OrderLike) {
 export async function notifyTrackingUpdated(order: OrderLike) {
   const payload = toPayload(order);
   await safeSend(payload.email, trackingUpdatedEmail(payload));
+}
+
+export async function notifyOrderRefunded(order: OrderLike) {
+  const payload = toPayload({ ...order, orderStatus: "REFUNDED" });
+  await safeSend(payload.email, orderRefundedEmail(payload));
 }

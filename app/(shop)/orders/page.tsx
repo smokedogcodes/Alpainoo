@@ -1,20 +1,13 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/require-user";
 import { opaqueHref } from "@/lib/security/opaque-routes";
+import { listOrdersForUser } from "@/lib/db/orders";
 
 export default async function MyOrdersPage() {
   const user = await requireUser({ callbackPath: opaqueHref("/orders") });
 
-  const orders = await prisma.order.findMany({
-    where: {
-      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
-    },
-    include: { items: true, shipment: true },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const orders = await listOrdersForUser(user.id);
 
   return (
     <div className="mx-auto max-w-store px-4 py-10 md:px-6">
@@ -40,25 +33,20 @@ export default async function MyOrdersPage() {
                   · {o.items.length} item{o.items.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <div className="text-left sm:text-right">
-                <p className="font-medium">{formatINR(o.totalAmount)}</p>
-                <p className="text-xs uppercase tracking-wide text-muted">
-                  {o.orderStatus.replaceAll("_", " ")}
-                </p>
+              <div className="text-sm sm:text-right">
+                <p className="font-semibold">{formatINR(o.totalAmount)}</p>
+                <p className="text-muted">{o.orderStatus}</p>
               </div>
             </div>
-            {o.shipment?.trackingStatus && (
-              <p className="mt-2 text-xs text-muted">Tracking: {o.shipment.trackingStatus}</p>
-            )}
           </Link>
         ))}
-        {!orders.length && (
-          <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
-            <p className="text-muted">You haven&apos;t placed an order yet.</p>
-            <Link href={opaqueHref("/products")} className="mt-3 inline-block text-sm text-sage underline">
-              Browse products
+        {orders.length === 0 && (
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
+            No orders yet.{" "}
+            <Link href={opaqueHref("/products")} className="text-sage underline">
+              Shop now
             </Link>
-          </div>
+          </p>
         )}
       </div>
     </div>

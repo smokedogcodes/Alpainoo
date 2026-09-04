@@ -24,6 +24,9 @@ const ProductFormSchema = z.object({
   benefits: z.array(z.string().max(200)).max(50),
   images: z.array(z.string().max(500)).max(20),
   stockNote: z.string().max(200).optional(),
+  metaTitle: z.string().trim().max(120).optional(),
+  metaDescription: z.string().trim().max(320).optional(),
+  lowStockThreshold: z.number().int().min(0).max(10_000).optional(),
 });
 
 export async function upsertProduct(formData: FormData) {
@@ -53,12 +56,29 @@ export async function upsertProduct(formData: FormData) {
       .map(sanitizeImageUrl)
       .filter(Boolean),
     stockNote: String(formData.get("stockNote") || "") || undefined,
+    metaTitle: String(formData.get("metaTitle") || "").trim() || undefined,
+    metaDescription: String(formData.get("metaDescription") || "").trim() || undefined,
+    lowStockThreshold: formData.get("lowStockThreshold")
+      ? Number(formData.get("lowStockThreshold"))
+      : undefined,
   };
 
   const parsed = ProductFormSchema.safeParse(raw);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Invalid product");
 
-  const { id, mrp, sellingPrice, stock, title, images, stockNote, ...rest } = parsed.data;
+  const {
+    id,
+    mrp,
+    sellingPrice,
+    stock,
+    title,
+    images,
+    stockNote,
+    metaTitle,
+    metaDescription,
+    lowStockThreshold,
+    ...rest
+  } = parsed.data;
   if (sellingPrice > mrp) throw new Error("Selling price cannot exceed MRP");
 
   const discount = mrp > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
@@ -74,6 +94,9 @@ export async function upsertProduct(formData: FormData) {
     stock,
     benefits: JSON.stringify(rest.benefits),
     images: JSON.stringify(images.length ? images : ["/products/placeholder.jpg"]),
+    metaTitle: metaTitle || null,
+    metaDescription: metaDescription || null,
+    ...(lowStockThreshold != null ? { lowStockThreshold } : {}),
   };
 
   let productId = id;
@@ -166,6 +189,14 @@ export async function updateOrderStatus(id: string, orderStatus: string) {
     )
     .catch((err) => console.error("[email] status notify:", err));
 
+  if (status === "SHIPPED") {
+    void import("@/lib/whatsapp")
+      .then(({ notifyOrderShippedWhatsApp }) =>
+        notifyOrderShippedWhatsApp(updated, updated.shipment?.trackingUrl)
+      )
+      .catch(() => undefined);
+  }
+
   void import("@/lib/logging/system-log").then(({ logSuccess }) =>
     logSuccess({
       category: "admin",
@@ -201,6 +232,14 @@ export async function upsertBlog(formData: FormData) {
   const slug = slugify(title);
   const coverRaw = String(formData.get("coverImage") || "");
   const coverImage = sanitizeImageUrl(coverRaw) || null;
+  const metaTitle = String(formData.get("metaTitle") || "").trim() || null;
+  const metaDescription = String(formData.get("metaDescription") || "").trim() || null;
+  const scheduledRaw = String(formData.get("scheduledAt") || "").trim();
+  const scheduledAt = scheduledRaw ? new Date(scheduledRaw) : null;
+  if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
+    throw new Error("Invalid schedule date");
+  }
+
   const data = {
     title,
     slug,
@@ -209,6 +248,9 @@ export async function upsertBlog(formData: FormData) {
     published,
     tags: JSON.stringify(tags),
     coverImage,
+    metaTitle,
+    metaDescription,
+    scheduledAt,
   };
   if (id) await prisma.blogPost.update({ where: { id }, data });
   else await prisma.blogPost.create({ data });

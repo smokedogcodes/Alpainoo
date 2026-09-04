@@ -1,8 +1,12 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "@/lib/prisma";
 import type { DefaultSession } from "next-auth";
+import {
+  findUserByEmail,
+  findUserById,
+  updateUserRole,
+  upsertUserByEmail,
+} from "@/lib/db/users";
 
 declare module "next-auth" {
   interface Session {
@@ -17,11 +21,6 @@ declare module "next-auth" {
   }
 }
 
-/**
- * Optional first-time bootstrap only: promote matching emails while still CUSTOMER.
- * Ongoing role changes happen via DB /admin/users.
- * Includes store-owner Google accounts that may differ from seed spelling.
- */
 function bootstrapAdminEmails(): Set<string> {
   const fromEnv = [
     process.env.ADMIN_EMAIL,
@@ -40,27 +39,20 @@ async function ensureAdminRole(userId: string, email: string | null | undefined)
   const allowed = bootstrapAdminEmails();
   if (!allowed.has(email.toLowerCase().trim())) return;
 
-  const existing = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
+  const existing = await findUserById(userId);
   if (existing?.role === "ADMIN") return;
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { role: "ADMIN" },
-  });
+  await updateUserRole(userId, "ADMIN");
 }
 
 const useSecureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  // JWT-only — no PrismaAdapter (Workers cannot run Prisma). Users upserted on sign-in.
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID?.trim(),
       clientSecret: process.env.AUTH_GOOGLE_SECRET?.trim(),
-      allowDangerousEmailAccountLinking: false,
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
   session: { strategy: "jwt" },
@@ -118,33 +110,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
+    async signIn({ user }) {
+      if (!user.email) return false;
+      try {
+        const dbUser = await upsertUserByEmail({
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        });
+        user.id = dbUser.id;
+        await ensureAdminRole(dbUser.id, user.email);
+      } catch (err) {
+        console.error("[auth] signIn upsert failed", err);
+        return false;
+      }
+      return true;
+    },
     async jwt({ token, user }) {
-      // Prisma cannot run in Edge middleware — keep role already embedded in the JWT there.
       if (process.env.NEXT_RUNTIME === "edge") {
         return token;
       }
 
-      if (user?.id) {
-        await ensureAdminRole(user.id, user.email);
-        token.sub = user.id;
-        if (user.name) token.name = user.name;
-        if (user.email) token.email = user.email;
-        if (user.image) {
-          token.picture = user.image;
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { avatarUrl: user.image },
+      try {
+        if (user?.email) {
+          const dbUser = await upsertUserByEmail({
+            email: user.email,
+            name: user.name,
+            image: user.image,
           });
+          await ensureAdminRole(dbUser.id, user.email);
+          token.sub = dbUser.id;
+          if (user.name) token.name = user.name;
+          if (user.email) token.email = user.email;
+          if (user.image) token.picture = user.image;
         }
-      }
 
-      // Re-read role from DB on Node so demotions/promotions take effect
-      if (token.sub) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.sub },
-          select: { role: true },
-        });
-        (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+        if (token.sub) {
+          const dbUser = await findUserById(token.sub);
+          (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+        } else if (token.email) {
+          const dbUser = await findUserByEmail(String(token.email));
+          if (dbUser) {
+            token.sub = dbUser.id;
+            (token as { role?: string }).role = dbUser.role;
+          }
+        }
+      } catch {
+        /* keep existing JWT on DB blips */
       }
 
       return token;
@@ -158,19 +170,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (token.picture) session.user.image = token.picture as string;
       }
       return session;
-    },
-  },
-  events: {
-    async createUser({ user }) {
-      if (user.id) {
-        await ensureAdminRole(user.id, user.email);
-        if (user.image) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { avatarUrl: user.image },
-          });
-        }
-      }
     },
   },
   trustHost: true,

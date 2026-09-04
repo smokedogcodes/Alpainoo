@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { upsertProduct } from "@/lib/actions/admin";
+import { compressImageForUpload } from "@/lib/images/compress-client";
 import { parseJsonArray } from "@/lib/utils";
 
 type ProductFormValues = {
@@ -25,6 +26,9 @@ type ProductFormValues = {
   usage?: string | null;
   benefits?: string;
   images?: string;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  lowStockThreshold?: number | null;
 };
 
 export function ProductForm({ product }: { product?: ProductFormValues }) {
@@ -38,7 +42,10 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
     setUploading(true);
     try {
       const body = new FormData();
-      Array.from(files).forEach((f) => body.append("files", f));
+      for (const raw of Array.from(files)) {
+        const compressed = await compressImageForUpload(raw);
+        body.append("files", compressed);
+      }
       const res = await fetch("/api/upload", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
@@ -129,6 +136,40 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
         <Label htmlFor="usage">Usage instructions</Label>
         <Textarea id="usage" name="usage" defaultValue={product?.usage || ""} className="mt-1.5" />
       </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label htmlFor="metaTitle">SEO title</Label>
+          <Input
+            id="metaTitle"
+            name="metaTitle"
+            maxLength={120}
+            defaultValue={product?.metaTitle || ""}
+            className="mt-1.5"
+            placeholder="Overrides product title in search results"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="metaDescription">SEO description</Label>
+          <Textarea
+            id="metaDescription"
+            name="metaDescription"
+            maxLength={320}
+            defaultValue={product?.metaDescription || ""}
+            className="mt-1.5"
+          />
+        </div>
+        <div>
+          <Label htmlFor="lowStockThreshold">Low stock threshold</Label>
+          <Input
+            id="lowStockThreshold"
+            name="lowStockThreshold"
+            type="number"
+            min={0}
+            defaultValue={product?.lowStockThreshold ?? 5}
+            className="mt-1.5"
+          />
+        </div>
+      </div>
       <div>
         <Label htmlFor="fileUpload">Upload product images</Label>
         <Input
@@ -142,8 +183,9 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
           onChange={(e) => onUpload(e.target.files)}
         />
         <p className="mt-1 text-xs text-muted">
-          Files are stored on the Hostinger server under <code>/uploads/products/</code>
-          {uploading ? " — uploading…" : ""}.
+          Images are resized to WebP (max 1200px / ~500 KB) and stored in the database
+          (or R2 when enabled). No redeploy needed.
+          {uploading ? " — compressing & uploading…" : ""}
         </p>
       </div>
       <div>
@@ -153,7 +195,7 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
           name="images"
           value={imageUrls}
           onChange={(e) => setImageUrls(e.target.value)}
-          placeholder="/uploads/products/….jpg"
+          placeholder="/api/media/… or /products/….jpg"
           className="mt-1.5"
         />
       </div>

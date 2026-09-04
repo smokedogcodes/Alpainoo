@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import {
   Sheet,
   SheetClose,
@@ -21,7 +22,33 @@ import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 export function CartSheet({ children }: { children: React.ReactNode }) {
   const { items, updateQty, removeItem, subtotal } = useCart();
   const [open, setOpen] = useState(false);
+  const { data: session } = useSession();
+  const beaconSent = useRef<string>("");
   useDismissOnRouteChange(() => setOpen(false));
+
+  useEffect(() => {
+    if (!open || !items.length) return;
+    const email = session?.user?.email?.trim();
+    if (!email) return;
+    const key = `${email}:${items.map((i) => `${i.productId}x${i.quantity}`).join(",")}`;
+    if (beaconSent.current === key) return;
+    beaconSent.current = key;
+    void fetch("/api/abandoned-cart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        items: items.map((i) => ({
+          productId: i.productId,
+          slug: i.slug,
+          title: i.title,
+          quantity: i.quantity,
+          price: i.price,
+        })),
+      }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }, [open, items, session?.user?.email]);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

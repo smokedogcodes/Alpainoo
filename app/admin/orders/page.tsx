@@ -27,6 +27,7 @@ export default async function AdminOrdersPage({
     "SHIPPED",
     "DELIVERED",
     "CANCELLED",
+    "REFUNDED",
   ];
 
   return (
@@ -82,6 +83,7 @@ export default async function AdminOrdersPage({
               cancelRequested={o.orderStatus === "CANCEL_REQUESTED"}
               cancelReason={o.cancelReason}
               hasShipment={Boolean(o.shipment)}
+              canRefund={o.paymentStatus === "PAID"}
             />
           </div>
         ))}

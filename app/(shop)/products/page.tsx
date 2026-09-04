@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { prisma } from "@/lib/prisma";
+import { listProductFacets, listProducts } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductFilters } from "@/components/product/product-filters";
 
@@ -18,45 +18,36 @@ export default async function ProductsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const where: Record<string, unknown> = { isHidden: false };
   const query = searchParams.q?.trim();
 
-  if (query) {
-    where.OR = [
-      { title: { contains: query } },
-      { brand: { contains: query } },
-      { category: { contains: query } },
-      { sku: { contains: query } },
-    ];
-  }
-  if (searchParams.category) where.category = searchParams.category;
-  if (searchParams.brand) where.brand = searchParams.brand;
-  if (searchParams.inStock === "1") where.stock = { gt: 0 };
-  if (searchParams.min || searchParams.max) {
-    where.sellingPrice = {
-      ...(searchParams.min ? { gte: Number(searchParams.min) } : {}),
-      ...(searchParams.max ? { lte: Number(searchParams.max) } : {}),
-    };
+  let orderBy: "reviewCount" | "createdAt" | "sellingPrice" = "reviewCount";
+  let orderDir: "asc" | "desc" = "desc";
+  if (searchParams.sort === "price-asc") {
+    orderBy = "sellingPrice";
+    orderDir = "asc";
+  } else if (searchParams.sort === "price-desc") {
+    orderBy = "sellingPrice";
+    orderDir = "desc";
+  } else if (searchParams.sort === "newest") {
+    orderBy = "createdAt";
+    orderDir = "desc";
   }
 
-  let orderBy: Record<string, string> = { reviewCount: "desc" };
-  if (searchParams.sort === "price-asc") orderBy = { sellingPrice: "asc" };
-  if (searchParams.sort === "price-desc") orderBy = { sellingPrice: "desc" };
-  if (searchParams.sort === "newest") orderBy = { createdAt: "desc" };
-
-  const [products, brands, categories] = await Promise.all([
-    prisma.product.findMany({ where, orderBy }),
-    prisma.product.findMany({
-      where: { isHidden: false },
-      distinct: ["brand"],
-      select: { brand: true },
+  const [products, facets] = await Promise.all([
+    listProducts({
+      q: query,
+      category: searchParams.category,
+      brand: searchParams.brand,
+      inStock: searchParams.inStock === "1",
+      minPrice: searchParams.min ? Number(searchParams.min) : undefined,
+      maxPrice: searchParams.max ? Number(searchParams.max) : undefined,
+      orderBy,
+      orderDir,
     }),
-    prisma.product.findMany({
-      where: { isHidden: false },
-      distinct: ["category"],
-      select: { category: true },
-    }),
+    listProductFacets(),
   ]);
+  const brands = facets.brands;
+  const categories = facets.categories;
 
   return (
     <div className="mx-auto max-w-store px-4 py-8 md:px-6">
@@ -73,8 +64,8 @@ export default async function ProductsPage({
       )}
       <div className="mt-6 grid gap-8 lg:grid-cols-[240px_1fr]">
         <ProductFilters
-          brands={brands.map((b) => b.brand)}
-          categories={categories.map((c) => c.category)}
+          brands={brands}
+          categories={categories}
           current={searchParams}
         />
         <div>
@@ -94,7 +85,7 @@ export default async function ProductsPage({
                   alt=""
                   fill
                   sizes="(max-width:640px) 100vw, 33vw"
-                  quality={90}
+                  quality={75}
                   className="object-cover opacity-35"
                 />
                 <div className="absolute inset-0 bg-blush-soft/55" />

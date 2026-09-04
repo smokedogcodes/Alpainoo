@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listProducts } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/utils";
@@ -11,13 +11,11 @@ export const metadata: Metadata = {
 };
 
 export default async function SalePage() {
-  const products = await prisma.product.findMany({
-    where: {
-      isHidden: false,
-      discount: { gt: 0 },
-      stock: { gt: 0 },
-    },
-    orderBy: [{ discount: "desc" }, { reviewCount: "desc" }],
+  const products = await listProducts({
+    onSale: true,
+    inStock: true,
+    orderBy: "discount",
+    orderDir: "desc",
   });
 
   const maxDiscount = products[0]?.discount ?? 0;
@@ -38,50 +36,36 @@ export default async function SalePage() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <div className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm">
               <p className="text-muted">Products on sale</p>
-              <p className="font-display text-2xl">{products.length}</p>
+              <p className="font-semibold text-sage">{products.length}</p>
             </div>
             <div className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm">
-              <p className="text-muted">Top discount</p>
-              <p className="font-display text-2xl text-price-sale">{maxDiscount}%</p>
+              <p className="text-muted">Up to</p>
+              <p className="font-semibold text-price-sale">{maxDiscount}% off</p>
             </div>
             <div className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm">
-              <p className="text-muted">Avg. off</p>
-              <p className="font-display text-2xl">{avgDiscount}%</p>
+              <p className="text-muted">Avg. discount</p>
+              <p className="font-semibold text-sage">{avgDiscount}%</p>
             </div>
             <div className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm">
-              <p className="text-muted">You can save up to</p>
-              <p className="font-display text-2xl">{formatINR(totalSavings)}</p>
+              <p className="text-muted">Potential savings</p>
+              <p className="font-semibold text-sage">{formatINR(totalSavings)}</p>
             </div>
           </div>
-          <Button asChild variant="outline" className="mt-8">
+          <Button asChild className="mt-8 rounded-full px-8">
             <Link href="/products">Browse full catalog</Link>
           </Button>
         </div>
       </section>
 
       <section className="mx-auto max-w-store px-4 py-12 md:px-6">
-        {!products.length ? (
-          <div className="rounded-lg border border-dashed border-border bg-white py-20 text-center">
-            <p className="font-display text-2xl">No active sales right now</p>
-            <p className="mt-2 text-sm text-muted">Check back soon — or explore the full shop.</p>
-            <Button asChild className="mt-6">
-              <Link href="/products">Shop all products</Link>
-            </Button>
-          </div>
+        {products.length === 0 ? (
+          <p className="text-center text-muted">No sale items right now — check back soon.</p>
         ) : (
-          <>
-            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="font-display text-3xl tracking-wide">Discounted products</h2>
-                <p className="text-sm text-muted">Sorted by biggest discount first</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          </>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {products.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
         )}
       </section>
     </div>

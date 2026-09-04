@@ -4,6 +4,8 @@ import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { auth } from "@/auth";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { CookieConsent } from "@/components/consent/cookie-consent";
+import { TrackingPixels } from "@/components/analytics/tracking-pixels";
 import "./globals.css";
 
 // Stable Google fonts for Vercel builds (same CSS vars as Stitch tokens)
@@ -30,6 +32,8 @@ export const metadata: Metadata = {
   description: "Your ultimate online skincare destination for serums, haircare, and fragrances.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
 
@@ -38,6 +42,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={`${display.variable} ${body.variable} min-h-screen antialiased`}>
         <AuthProvider session={session}>
           {children}
+          <CookieConsent />
+          <TrackingPixels />
           <Toaster richColors position="top-center" />
           {process.env.VERCEL === "1" ? <Analytics /> : null}
         </AuthProvider>

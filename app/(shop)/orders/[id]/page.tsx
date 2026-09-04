@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
 import { CancelOrderForm } from "@/components/orders/cancel-order-form";
+import { ReturnRequestForm } from "@/components/orders/return-request-form";
 import { requireUser } from "@/lib/auth/require-user";
 import { opaqueHref } from "@/lib/security/opaque-routes";
+import { findOrderById } from "@/lib/db/orders";
 
 type Address = {
   name?: string;
@@ -16,6 +17,7 @@ type Address = {
 };
 
 const CANCELLABLE = new Set(["PENDING", "PAID", "PROCESSING"]);
+const RETURNABLE = new Set(["DELIVERED"]);
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
   if (!/^[a-zA-Z0-9_-]{8,64}$/.test(params.id)) {
@@ -24,18 +26,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
   const user = await requireUser({ callbackPath: opaqueHref(`/orders/${params.id}`) });
 
-  const order = await prisma.order.findFirst({
-    where: {
-      id: params.id,
-      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
-    },
-    include: {
-      items: { include: { product: { select: { title: true, slug: true, sku: true } } } },
-      shipment: true,
-    },
-  });
-
-  if (!order) notFound();
+  const order = await findOrderById(params.id);
+  if (
+    !order ||
+    (order.userId !== user.id && !(user.email && order.email === user.email))
+  ) {
+    notFound();
+  }
 
   let address: Address = {};
   try {
@@ -45,6 +42,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   }
 
   const canCancel = CANCELLABLE.has(order.orderStatus);
+  const canReturn =
+    RETURNABLE.has(order.orderStatus) && order.paymentStatus === "PAID";
 
   return (
     <div className="mx-auto max-w-store px-4 py-10 md:px-6">
@@ -70,6 +69,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <p className="text-xs uppercase tracking-wide text-muted">Status</p>
           <p className="font-medium">{order.orderStatus.replaceAll("_", " ")}</p>
           <p className="text-sm text-muted">Payment: {order.paymentStatus}</p>
+          <Link
+            href={opaqueHref(`/orders/${order.id}/invoice`)}
+            className="mt-2 inline-block text-sm text-sage underline"
+          >
+            GST invoice
+          </Link>
         </div>
       </div>
 
@@ -162,7 +167,9 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <p className="text-xs text-muted">Last synced courier status</p>
               </li>
             )}
-            {["SHIPPED", "DELIVERED", "CANCELLED", "CANCEL_REQUESTED"].includes(order.orderStatus) && (
+            {["SHIPPED", "DELIVERED", "CANCELLED", "CANCEL_REQUESTED", "REFUNDED"].includes(
+              order.orderStatus
+            ) && (
               <li>
                 <span className="font-medium">{order.orderStatus.replaceAll("_", " ")}</span>
               </li>
@@ -180,6 +187,16 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className="mt-4">
             <CancelOrderForm orderId={order.id} />
           </div>
+        </section>
+      )}
+
+      {canReturn && (
+        <section className="mt-10">
+          <h2 className="font-display text-xl">Request a return</h2>
+          <p className="mt-1 text-sm text-muted">
+            Delivered orders can be returned. Tell us why and we&apos;ll review your request.
+          </p>
+          <ReturnRequestForm orderId={order.id} />
         </section>
       )}
     </div>

@@ -1,9 +1,23 @@
+import path from "path";
+import { fileURLToPath } from "url";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Required so OpenNext picks Prisma's workerd build (avoids fs.readdir / unenv).
   experimental: {
-    serverComponentsExternalPackages: ["@prisma/client", ".prisma/client"],
+    serverComponentsExternalPackages: [
+      "@prisma/client",
+      ".prisma/client",
+      "@prisma/adapter-d1",
+    ],
   },
   images: {
+    // OpenNext Cloudflare only serves qualities listed here (default is [75]).
+    // ProductImage uses 90 — without this, `/_next/image?...&q=90` returns 400.
+    qualities: [75, 90],
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
@@ -58,5 +72,4 @@ const nextConfig = {
 
 export default nextConfig;
 
-import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 initOpenNextCloudflareForDev();

@@ -1,62 +1,28 @@
-import { prisma } from "@/lib/prisma";
 import { createShiprocketOrder } from "@/lib/shiprocket";
+import {
+  fulfillPaidOrderDb,
+  findOrderById,
+  upsertShipmentD1,
+  type OrderWithItems,
+} from "@/lib/db/orders";
 
 /**
- * Idempotent paid-order fulfillment:
- * - If already PAID → return immediately (no double stock / Shiprocket)
- * - Stock decremented atomically with stock >= quantity guard
- * - External Shiprocket call runs after DB commit
+ * Idempotent paid-order fulfillment (Prisma local or D1 on Workers).
  */
 export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: string) {
-  const updated = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: { items: { include: { product: true } }, shipment: true },
-    });
-    if (!order) throw new Error("Order not found");
-    if (order.paymentStatus === "PAID") return { order, alreadyPaid: true as const };
+  const { order, alreadyPaid } = await fulfillPaidOrderDb(orderId, razorpayPaymentId);
 
-    for (const item of order.items) {
-      const result = await tx.product.updateMany({
-        where: { id: item.productId, stock: { gte: item.quantity } },
-        data: { stock: { decrement: item.quantity } },
-      });
-      if (result.count !== 1) {
-        throw new Error(`Insufficient stock for ${item.product.title}`);
-      }
-      await tx.stockLog.create({
-        data: {
-          productId: item.productId,
-          change: -item.quantity,
-          note: `Order ${order.orderNumber}`,
-        },
-      });
-    }
-
-    const paid = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        paymentStatus: "PAID",
-        orderStatus: "PAID",
-        razorpayPaymentId,
-      },
-      include: { items: { include: { product: true } }, shipment: true },
-    });
-
-    return { order: paid, alreadyPaid: false as const };
-  });
-
-  if (updated.alreadyPaid) return updated.order;
+  if (alreadyPaid) return order;
 
   void import("@/lib/logging/system-log").then(({ logSuccess }) =>
     logSuccess({
       category: "payment",
       action: "ORDER_PAID",
-      message: `Order ${updated.order.orderNumber} paid`,
+      message: `Order ${order.orderNumber} paid`,
       entityType: "Order",
-      entityId: updated.order.id,
-      actorEmail: updated.order.email,
-      meta: { orderNumber: updated.order.orderNumber, totalAmount: updated.order.totalAmount },
+      entityId: order.id,
+      actorEmail: order.email,
+      meta: { orderNumber: order.orderNumber, totalAmount: order.totalAmount },
     })
   );
 
@@ -64,25 +30,34 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
     writeDbAudit({
       tableName: "Order",
       operation: "UPDATE",
-      rowId: updated.order.id,
+      rowId: order.id,
       newData: {
-        id: updated.order.id,
+        id: order.id,
         paymentStatus: "PAID",
-        orderStatus: updated.order.orderStatus,
-        orderNumber: updated.order.orderNumber,
+        orderStatus: order.orderStatus,
+        orderNumber: order.orderNumber,
       },
     })
   );
 
-  // Notify once on first successful payment (fail-soft)
   void import("@/lib/email/orders")
-    .then(({ notifyOrderPaid }) => notifyOrderPaid(updated.order))
+    .then(({ notifyOrderPaid }) => notifyOrderPaid(order))
     .catch((err) => console.error("[email] order paid notify:", err));
 
-  if (updated.order.shipment) return updated.order;
+  void import("@/lib/whatsapp")
+    .then(({ notifyOrderPaidWhatsApp }) => notifyOrderPaidWhatsApp(order))
+    .catch(() => undefined);
+
+  for (const item of order.items) {
+    void import("@/lib/inventory/alerts")
+      .then(({ checkAndNotifyLowStock }) => checkAndNotifyLowStock(item.productId))
+      .catch(() => undefined);
+  }
+
+  if (order.shipment) return order;
 
   try {
-    const address = JSON.parse(updated.order.shippingAddress) as {
+    const address = JSON.parse(order.shippingAddress) as {
       name: string;
       phone: string;
       address: string;
@@ -92,7 +67,7 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
     };
 
     const sr = await createShiprocketOrder({
-      order_id: updated.order.orderNumber,
+      order_id: order.orderNumber,
       order_date: new Date().toISOString().slice(0, 10),
       pickup_location: "Primary",
       billing_customer_name: address.name.split(" ")[0] || address.name,
@@ -102,33 +77,31 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
       billing_pincode: address.pincode,
       billing_state: address.state,
       billing_country: "India",
-      billing_email: updated.order.email,
+      billing_email: order.email,
       billing_phone: address.phone,
       shipping_is_billing: true,
-      order_items: updated.order.items.map((i) => ({
+      order_items: order.items.map((i) => ({
         name: i.product.title,
         sku: i.product.sku,
         units: i.quantity,
         selling_price: i.price,
       })),
       payment_method: "Prepaid",
-      sub_total: updated.order.totalAmount,
+      sub_total: order.totalAmount,
       length: 10,
       breadth: 10,
       height: 10,
       weight: 0.5,
     });
 
-    await prisma.shipment.create({
-      data: {
-        orderId: updated.order.id,
-        shiprocketOrderId: sr.order_id != null ? String(sr.order_id) : null,
-        shipmentId: String(sr.shipment_id ?? ""),
-        awbCode: sr.awb_code ? String(sr.awb_code) : null,
-        courierName: sr.courier_name ? String(sr.courier_name) : null,
-        trackingStatus: "READY_TO_SHIP",
-        trackingUrl: sr.tracking_url ? String(sr.tracking_url) : null,
-      },
+    await upsertShipmentD1(order.id, {
+      orderId: order.id,
+      shiprocketOrderId: sr.order_id != null ? String(sr.order_id) : null,
+      shipmentId: String(sr.shipment_id ?? ""),
+      awbCode: sr.awb_code ? String(sr.awb_code) : null,
+      courierName: sr.courier_name ? String(sr.courier_name) : null,
+      trackingStatus: "READY_TO_SHIP",
+      trackingUrl: sr.tracking_url ? String(sr.tracking_url) : null,
     });
   } catch (err) {
     console.error("Shiprocket fulfillment deferred/failed:", err);
@@ -138,11 +111,11 @@ export async function fulfillPaidOrder(orderId: string, razorpayPaymentId: strin
         action: "SHIPROCKET_FAILED",
         message: err instanceof Error ? err.message : "Shiprocket fulfillment failed",
         entityType: "Order",
-        entityId: updated.order.id,
-        meta: { orderNumber: updated.order.orderNumber },
+        entityId: order.id,
+        meta: { orderNumber: order.orderNumber },
       })
     );
   }
 
-  return updated.order;
+  return (await findOrderById(orderId)) as OrderWithItems;
 }

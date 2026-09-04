@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { findOrderByRazorpayOrderId } from "@/lib/db/orders";
 import { verifyRazorpayWebhookSignature } from "@/lib/razorpay";
 import { fulfillPaidOrder } from "@/lib/fulfillment";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
@@ -15,7 +15,6 @@ export async function POST(req: Request) {
   }
 
   if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
-    console.error("RAZORPAY_WEBHOOK_SECRET is not configured");
     await logError({
       category: "api",
       action: "WEBHOOK_NOT_CONFIGURED",
@@ -29,8 +28,7 @@ export async function POST(req: Request) {
   const body = await req.text();
   const signature = req.headers.get("x-razorpay-signature") || "";
 
-  const valid = verifyRazorpayWebhookSignature(body, signature);
-  if (!valid) {
+  if (!verifyRazorpayWebhookSignature(body, signature)) {
     await logWarn({
       category: "api",
       action: "WEBHOOK_INVALID_SIGNATURE",
@@ -51,13 +49,6 @@ export async function POST(req: Request) {
   try {
     event = JSON.parse(body);
   } catch {
-    await logError({
-      category: "api",
-      action: "WEBHOOK_INVALID_JSON",
-      message: "Invalid webhook JSON",
-      path: "/api/webhooks/razorpay",
-      method: "POST",
-    });
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
@@ -70,10 +61,8 @@ export async function POST(req: Request) {
     }
 
     try {
-      const order = await prisma.order.findFirst({ where: { razorpayOrderId } });
-      if (!order) {
-        return NextResponse.json({ ok: true, skipped: true });
-      }
+      const order = await findOrderByRazorpayOrderId(razorpayOrderId);
+      if (!order) return NextResponse.json({ ok: true, skipped: true });
       if (order.paymentStatus === "PAID") {
         return NextResponse.json({ ok: true, alreadyPaid: true });
       }
@@ -84,9 +73,6 @@ export async function POST(req: Request) {
         message: `Webhook fulfilled ${order.orderNumber}`,
         entityType: "Order",
         entityId: order.id,
-        path: "/api/webhooks/razorpay",
-        method: "POST",
-        meta: { event: event.event },
       });
     } catch (err) {
       await logError({
@@ -95,7 +81,6 @@ export async function POST(req: Request) {
         message: err instanceof Error ? err.message : "Webhook fulfill failed",
         path: "/api/webhooks/razorpay",
         method: "POST",
-        meta: { razorpayOrderId },
       });
       return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 });
     }

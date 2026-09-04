@@ -22,6 +22,7 @@ export function OrderStatusSelect({ id, value }: { id: string; value: string }) 
         "SHIPPED",
         "DELIVERED",
         "CANCELLED",
+        "REFUNDED",
       ].map((s) => (
         <option key={s} value={s}>
           {s.replaceAll("_", " ")}

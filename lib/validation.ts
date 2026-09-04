@@ -38,6 +38,7 @@ export const OrderStatusSchema = z.enum([
   "DELIVERED",
   "CANCELLED",
   "CANCEL_REQUESTED",
+  "REFUNDED",
 ]);
 
 export const ORDER_STATUSES = OrderStatusSchema.options;
@@ -64,6 +65,7 @@ export function sanitizeImageUrl(url: string) {
   if (
     trimmed.startsWith("/uploads/") ||
     trimmed.startsWith("/api/uploads/") ||
+    trimmed.startsWith("/api/media/") ||
     trimmed.startsWith("/products/") ||
     trimmed.startsWith("/blog/") ||
     trimmed.startsWith("/collections/") ||

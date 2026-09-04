@@ -31,6 +31,7 @@ export default function CheckoutPage() {
   const subtotal = useCart((s) => s.subtotal);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
   const [form, setForm] = useState({
     email: "",
     name: "",
@@ -72,6 +73,7 @@ export default function CheckoutPage() {
         phone,
         pincode: form.pincode.trim(),
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        couponCode: couponCode.trim() || undefined,
       });
 
       if (!result.ok) {
@@ -246,6 +248,17 @@ export default function CheckoutPage() {
                   pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
                 }))
               }
+            />
+          </div>
+          <div>
+            <Label htmlFor="couponCode">Coupon code (optional)</Label>
+            <Input
+              id="couponCode"
+              type="text"
+              className="mt-1.5"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder="SAVE10"
             />
           </div>
           <Button type="submit" variant="terracotta" className="w-full" disabled={loading || !items.length}>

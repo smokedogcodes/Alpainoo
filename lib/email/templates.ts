@@ -142,6 +142,17 @@ export function cancelRejectedEmail(order: OrderEmailPayload) {
   return { subject, html, text };
 }
 
+export function orderRefundedEmail(order: OrderEmailPayload) {
+  const subject = `Refund processed — ${order.orderNumber}`;
+  const html = layout(
+    "Your refund has been processed",
+    `<p style="color:#4a463f;line-height:1.5;">We've refunded order <strong>${escapeHtml(order.orderNumber)}</strong> for <strong>${formatINR(order.totalAmount)}</strong>. Funds usually appear in 5–7 business days depending on your bank.</p>`,
+    order
+  );
+  const text = `Refund processed for ${order.orderNumber} (${formatINR(order.totalAmount)}).${textFooter(order)}`;
+  return { subject, html, text };
+}
+
 export function trackingUpdatedEmail(order: OrderEmailPayload) {
   const subject = `Tracking update — ${order.orderNumber}`;
   const bits = [

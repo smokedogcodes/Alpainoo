@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUploadsBucket } from "@/lib/storage/uploads";
+import { getUploadsR2 } from "@/lib/db/d1";
 
 export async function GET(
   _req: Request,
@@ -10,7 +10,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const bucket = getUploadsBucket();
+  const bucket = await getUploadsR2();
   if (!bucket) {
     return NextResponse.json({ error: "Storage unavailable" }, { status: 503 });
   }

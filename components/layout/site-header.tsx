@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
+import { Heart, LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +108,12 @@ export function SiteHeader({
     router.push(opaqueHref("/orders"));
   }
 
+  function goWishlist() {
+    setAccountOpen(false);
+    setNavOpen(false);
+    router.push(opaqueHref("/wishlist"));
+  }
+
   return (
     <header className="glass-nav sticky top-0 z-[100] border-b border-border/50">
       <div className="mx-auto flex max-w-store items-center justify-between gap-3 px-4 py-3.5 md:px-6">
@@ -161,6 +167,14 @@ export function SiteHeader({
                       </button>
                       <button
                         type="button"
+                        onClick={goWishlist}
+                        className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                      >
+                        <Heart className="h-4 w-4" />
+                        Wishlist
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleSignOut}
                         className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
                       >
@@ -209,6 +223,16 @@ export function SiteHeader({
 
         <div className="flex items-center justify-end gap-1 sm:gap-2 lg:min-w-44">
           <HeaderSearch />
+
+          {signedIn && (
+            <Link
+              href={opaqueHref("/wishlist")}
+              className="hidden h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-off-white hover:text-sage sm:inline-flex"
+              aria-label="Wishlist"
+            >
+              <Heart className="h-5 w-5" />
+            </Link>
+          )}
 
           {isAdmin && (
             <Link
@@ -266,6 +290,15 @@ export function SiteHeader({
                           >
                             <Package className="h-4 w-4" />
                             My Orders
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                            onClick={goWishlist}
+                          >
+                            <Heart className="h-4 w-4" />
+                            Wishlist
                           </button>
                           {isAdmin && (
                             <Link

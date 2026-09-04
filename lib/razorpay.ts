@@ -37,3 +37,28 @@ export function verifyPaymentSignature(params: {
   const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   return timingSafeEqualHex(expected, params.signature);
 }
+
+/**
+ * Refund a Razorpay payment. When keys are missing, returns a mock skip result.
+ */
+export async function createRefund(
+  paymentId: string,
+  opts?: { amountPaise?: number; notes?: Record<string, string> }
+) {
+  const rzp = getRazorpay();
+  if (!rzp) {
+    return { skipped: true as const, mock: true as const, id: `mock_rfnd_${paymentId.slice(0, 12)}` };
+  }
+  if (!paymentId) throw new Error("Missing payment id");
+
+  const refund = await rzp.payments.refund(paymentId, {
+    ...(opts?.amountPaise != null ? { amount: opts.amountPaise } : {}),
+    ...(opts?.notes ? { notes: opts.notes } : {}),
+  });
+  return {
+    skipped: false as const,
+    mock: false as const,
+    id: String((refund as { id?: string }).id || ""),
+    raw: refund,
+  };
+}

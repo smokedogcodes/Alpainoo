@@ -1,41 +1,39 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { prisma } from "@/lib/prisma";
+import { getPostBySlug } from "@/lib/db/blog";
+import { listProducts } from "@/lib/db/products";
 import { parseJsonArray } from "@/lib/utils";
 import { ProductCard } from "@/components/product/product-card";
 
+export const dynamic = "force-dynamic";
+
 type Props = { params: { slug: string } };
 
-export async function generateStaticParams() {
-  const posts = await prisma.blogPost.findMany({
-    where: { published: true },
-    select: { slug: true },
-  });
-  return posts.map((p) => ({ slug: p.slug }));
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const post = await prisma.blogPost.findUnique({ where: { slug: params.slug } });
+  const post = await getPostBySlug(params.slug);
   if (!post) return { title: "Blog" };
   return { title: post.title, description: post.excerpt };
 }
 
 export default async function BlogPostPage({ params }: Props) {
-  const post = await prisma.blogPost.findUnique({ where: { slug: params.slug } });
-  if (!post || !post.published) notFound();
+  const post = await getPostBySlug(params.slug);
+  if (!post) notFound();
 
   const tags = parseJsonArray(post.tags);
-  const related = await prisma.product.findMany({
-    where: {
-      isHidden: false,
-      OR: tags.flatMap((t) => [
-        { category: { contains: t } },
-        { title: { contains: t } },
-      ]),
-    },
-    take: 4,
-  });
+  const related =
+    tags.length > 0
+      ? (
+          await Promise.all(
+            tags.slice(0, 3).map((t) => listProducts({ q: t, take: 4 }))
+          )
+        )
+          .flat()
+          .filter(
+            (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i && !p.isHidden
+          )
+          .slice(0, 4)
+      : [];
 
   return (
     <article className="mx-auto max-w-3xl px-4 py-10 md:px-6">

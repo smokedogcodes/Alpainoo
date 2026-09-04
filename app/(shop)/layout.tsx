@@ -5,6 +5,9 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { ShopAuthBanner } from "@/components/layout/shop-auth-banner";
 import { SupportChat } from "@/components/chat/support-chat";
 
+// Ensure Cloudflare request context is available for Prisma D1 / Auth.
+export const dynamic = "force-dynamic";
+
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   const userEmail = session?.user?.email ?? null;

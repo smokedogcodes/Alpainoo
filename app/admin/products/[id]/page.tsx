@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ProductForm } from "@/components/admin/product-form";
+import { VariantManager } from "@/components/admin/variant-manager";
+import { listVariants } from "@/lib/actions/variants";
 
 export default async function EditProductPage({ params }: { params: { id: string } }) {
   const product = await prisma.product.findUnique({
@@ -9,10 +11,33 @@ export default async function EditProductPage({ params }: { params: { id: string
   });
   if (!product) notFound();
 
+  const variants = await listVariants(product.id);
+
   return (
     <div className="space-y-8">
       <h1 className="font-display text-3xl">Edit product</h1>
-      <ProductForm product={product} />
+      <ProductForm
+        product={{
+          id: product.id,
+          title: product.title,
+          brand: product.brand,
+          category: product.category,
+          description: product.description,
+          volume: product.volume,
+          mrp: product.mrp,
+          sellingPrice: product.sellingPrice,
+          stock: product.stock,
+          sku: product.sku,
+          ingredients: product.ingredients,
+          usage: product.usage,
+          benefits: product.benefits,
+          images: product.images,
+          metaTitle: product.metaTitle,
+          metaDescription: product.metaDescription,
+          lowStockThreshold: product.lowStockThreshold,
+        }}
+      />
+      <VariantManager productId={product.id} initialVariants={variants} />
       <div className="rounded-lg border border-border bg-white p-4">
         <h2 className="font-display text-xl">Stock ledger</h2>
         <ul className="mt-3 divide-y divide-border text-sm">

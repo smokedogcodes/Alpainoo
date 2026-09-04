@@ -1,6 +1,6 @@
 # Deploy Alpainoo on Cloudflare Workers (free plan)
 
-Stack: **OpenNext** → Cloudflare Workers, **D1** (SQLite) for data, **R2** for product images.
+Stack: **OpenNext** → Cloudflare Workers, **D1** (SQLite) for data. Product images: **D1 BLOB** by default (compressed admin uploads); optional **R2** later.
 Cloudflare Email Routing is receive-only — use **Resend** or **MailChannels** to send mail.
 
 Use the **elorakart / Alpainoo Cloudflare account** (`npx wrangler login`).
@@ -36,7 +36,20 @@ Add to `wrangler.jsonc`:
 "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "alpainoo-uploads" }]
 ```
 
-Until R2 is enabled, admin uploads use the local filesystem fallback (Workers have no disk — enable R2 before relying on uploads in production).
+Until R2 is enabled, admin uploads are **resized in the browser** (WebP ≤ ~500 KB) and stored as **BLOB rows** in D1 (`StoredImage`), served at `/api/media/{id}`. Apply `prisma/migrations/0004_stored_images.sql` on remote D1. Stay well under D1’s **2 MB per-row** limit and **500 MB** free DB size.
+
+After enabling R2, uncomment in `wrangler.jsonc`:
+
+```jsonc
+"r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "alpainoo-uploads" }]
+```
+
+Then create the bucket and redeploy:
+
+```bash
+npx wrangler r2 bucket create alpainoo-uploads
+npm run cf:deploy
+```
 
 Apply schema to **remote** D1:
 
@@ -78,7 +91,17 @@ npx wrangler secret put NEXT_PUBLIC_RAZORPAY_KEY_ID
 npx wrangler secret put SHIPROCKET_EMAIL
 npx wrangler secret put SHIPROCKET_PASSWORD
 npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put WHATSAPP_TOKEN
+npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
+npx wrangler secret put NEXT_PUBLIC_GA_ID
+npx wrangler secret put NEXT_PUBLIC_META_PIXEL_ID
 ```
+
+Notes:
+
+- `ADMIN_EMAIL` (already listed above) is also used for **low-stock alerts**.
+- `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` enable Meta Cloud API ship/paid notifications (skipped when unset).
+- `NEXT_PUBLIC_GA_ID` / `NEXT_PUBLIC_META_PIXEL_ID` power client analytics pixels when consent allows.
 
 Set `AUTH_URL` and `NEXT_PUBLIC_APP_URL` to your Worker URL, e.g. `https://alpainoo.<account>.workers.dev`.
 
@@ -124,6 +147,23 @@ Custom domain: Workers → **alpainoo** → Domains → add hostname, then updat
 
 ---
 
+## Domain & SSL (Cloudflare Dashboard — not in-app)
+
+There is **no** domain/DNS/renewal panel inside the Alpainoo admin app. Manage domains here:
+
+1. Cloudflare Dashboard → **Workers & Pages** → **alpainoo** → **Settings** → **Domains & Routes** (or **Triggers** → Custom Domains).
+2. Add your hostname (e.g. `www.alpainoo.com` or apex).
+3. Cloudflare provisions **SSL certificates automatically** for Worker custom domains.
+4. If the domain is on Cloudflare DNS: create the CNAME/route Cloudflare shows (or use “proxied” apex as instructed in the UI).
+5. After the domain works over HTTPS, update secrets and Google OAuth:
+   - `AUTH_URL` / `NEXT_PUBLIC_APP_URL` → `https://your-domain`
+   - Google Cloud Console → OAuth redirect → `https://your-domain/api/auth/callback/google`
+6. Domain **registration/renewal** stays with your registrar (or Cloudflare Registrar); renewals are not handled by the shop app.
+
+See also [`docs/PENDING_MAJOR_FEATURES.md`](docs/PENDING_MAJOR_FEATURES.md) (in-app domain panel explicitly deferred).
+
+---
+
 ## 6. Local preview (Workers runtime)
 
 ```bash
@@ -139,7 +179,7 @@ npm run cf:preview
 | Issue | Fix |
 |-------|-----|
 | Prisma / DB errors on Workers | Confirm `DB` binding + remote migrations applied |
-| Uploads fail | Enable R2 in dashboard, create `alpainoo-uploads`, add binding |
+| Uploads fail | Ensure `StoredImage` table exists (`0004_stored_images.sql`); images must be ≤600 KB after client compress; optional R2 if preferred |
 | Wrong Cloudflare account | `wrangler logout` then `login` with elorakart email |
 | Google login fails | Match `AUTH_URL` + OAuth callback to Worker URL |
 | Emails skipped | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` |

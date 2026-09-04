@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { approveCancelRequest, rejectCancelRequest, syncShipmentTracking } from "@/lib/actions/admin";
+import { refundOrder } from "@/lib/actions/refunds";
 import { Button } from "@/components/ui/button";
 
 export function AdminOrderActions({
@@ -10,11 +11,13 @@ export function AdminOrderActions({
   cancelRequested,
   cancelReason,
   hasShipment,
+  canRefund = false,
 }: {
   orderId: string;
   cancelRequested: boolean;
   cancelReason?: string | null;
   hasShipment: boolean;
+  canRefund?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -62,17 +65,33 @@ export function AdminOrderActions({
           </div>
         </div>
       )}
-      {hasShipment && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() => run(() => syncShipmentTracking(orderId), "Tracking refreshed")}
-        >
-          Refresh tracking
-        </Button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {canRefund && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("Refund this paid order via Razorpay?")) return;
+              run(() => refundOrder(orderId), "Refunded");
+            }}
+          >
+            Refund
+          </Button>
+        )}
+        {hasShipment && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => run(() => syncShipmentTracking(orderId), "Tracking refreshed")}
+          >
+            Refresh tracking
+          </Button>
+        )}
+      </div>
       {message && <p className="text-xs text-sage">{message}</p>}
       {error && <p className="text-xs text-red-700">{error}</p>}
     </div>

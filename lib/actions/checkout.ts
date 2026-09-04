@@ -1,11 +1,16 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
 import { getRazorpay, verifyPaymentSignature } from "@/lib/razorpay";
 import { auth } from "@/auth";
 import { CheckoutSchema, VerifyPaymentSchema } from "@/lib/validation";
 import { signOrderAccess } from "@/lib/security/order-access";
 import { opaqueHref } from "@/lib/security/opaque-routes";
+import { getProductById } from "@/lib/db/products";
+import { upsertUserByEmail } from "@/lib/db/users";
+import {
+  createOrderBundle,
+  findOrderById,
+} from "@/lib/db/orders";
 
 export type CheckoutInput = {
   email: string;
@@ -16,6 +21,7 @@ export type CheckoutInput = {
   state: string;
   pincode: string;
   items: Array<{ productId: string; quantity: number }>;
+  couponCode?: string;
 };
 
 export type CheckoutOrderResult =
@@ -65,32 +71,42 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
     }
     const productIds = Array.from(qtyByProduct.keys());
 
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, isHidden: false },
-    });
+    const products = (
+      await Promise.all(productIds.map((id) => getProductById(id)))
+    ).filter(Boolean);
 
     const lineItems = productIds.map((productId) => {
-      const product = products.find((p) => p.id === productId);
+      const product = products.find((p) => p!.id === productId);
       const quantity = qtyByProduct.get(productId)!;
-      if (!product) throw new Error("Product not found");
+      if (!product || product.isHidden) throw new Error("Product not found");
       if (product.stock < quantity) throw new Error(`${product.title} is out of stock`);
       return { product, quantity, price: product.sellingPrice };
     });
 
-    const totalAmount = lineItems.reduce((s, l) => s + l.price * l.quantity, 0);
+    let totalAmount = lineItems.reduce((s, l) => s + l.price * l.quantity, 0);
+
+    // Optional coupon (Phase 2)
+    if (input.couponCode?.trim()) {
+      try {
+        const { applyCouponToTotal } = await import("@/lib/coupons");
+        const discounted = await applyCouponToTotal(
+          input.couponCode.trim(),
+          totalAmount
+        );
+        totalAmount = discounted.total;
+      } catch {
+        /* ignore invalid coupon at create — validated in UI */
+      }
+    }
+
     if (totalAmount <= 0) throw new Error("Invalid order total");
 
     const orderNumber = `EK${Date.now().toString().slice(-10)}`;
 
-    const user = await prisma.user.upsert({
-      where: { email: session.user.email },
-      create: {
-        email: session.user.email,
-        name: session.user.name || data.name,
-        image: session.user.image || null,
-        avatarUrl: session.user.image || null,
-      },
-      update: {},
+    const user = await upsertUserByEmail({
+      email: session.user.email,
+      name: session.user.name || data.name,
+      image: session.user.image || null,
     });
     const userId = user.id;
 
@@ -117,25 +133,18 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       razorpayOrderId = `order_mock_${orderNumber}`;
     }
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        userId,
-        email: data.email,
-        totalAmount,
-        paymentStatus: "PENDING",
-        orderStatus: "PENDING",
-        razorpayOrderId,
-        shippingAddress,
-        items: {
-          create: lineItems.map((l) => ({
-            productId: l.product.id,
-            quantity: l.quantity,
-            price: l.price,
-          })),
-        },
-      },
-      include: { items: true },
+    const order = await createOrderBundle({
+      orderNumber,
+      userId,
+      email: data.email,
+      totalAmount,
+      razorpayOrderId,
+      shippingAddress,
+      lines: lineItems.map((l) => ({
+        productId: l.product.id,
+        quantity: l.quantity,
+        price: l.price,
+      })),
     });
 
     void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
@@ -188,14 +197,10 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         meta: { email: data.email },
       })
     );
-    return { ok: false, error: "Checkout failed. Please try again." };
+    return { ok: false, error: message.includes("stock") || message.includes("Product") ? message : "Checkout failed. Please try again." };
   }
 }
 
-/**
- * Demo payment when Razorpay keys are not configured.
- * Blocked whenever live Razorpay credentials exist.
- */
 export async function confirmMockPayment(
   orderId: string
 ): Promise<{ ok: true; successUrl: string } | { ok: false; error: string }> {
@@ -212,14 +217,8 @@ export async function confirmMockPayment(
   }
 
   try {
-    const order = await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        userId: session.user.id,
-        paymentStatus: "PENDING",
-      },
-    });
-    if (!order) {
+    const order = await findOrderById(orderId);
+    if (!order || order.userId !== session.user.id || order.paymentStatus !== "PENDING") {
       return { ok: false, error: "Order not found" };
     }
 
@@ -227,21 +226,10 @@ export async function confirmMockPayment(
     await fulfillPaidOrder(order.id, `pay_mock_${Date.now()}`);
     return { ok: true, successUrl: successUrlFor(order, session.user.id, true) };
   } catch {
-    void import("@/lib/logging/system-log").then(({ logError }) =>
-      logError({
-        category: "payment",
-        action: "MOCK_PAYMENT_FAILED",
-        message: "Mock payment failed",
-        entityType: "Order",
-        entityId: orderId,
-        actorUserId: session.user.id,
-      })
-    );
     return { ok: false, error: "Payment failed" };
   }
 }
 
-/** Verify Razorpay checkout signature server-side, then fulfill */
 export async function verifyAndFulfillPayment(input: {
   orderId: string;
   razorpayOrderId: string;
@@ -259,16 +247,14 @@ export async function verifyAndFulfillPayment(input: {
   }
 
   try {
-    const order = await prisma.order.findFirst({
-      where: {
-        id: parsed.data.orderId,
-        OR: [
-          { userId: session.user.id },
-          ...(session.user.email ? [{ email: session.user.email }] : []),
-        ],
-      },
-    });
-    if (!order) return { ok: false, error: "Order not found" };
+    const order = await findOrderById(parsed.data.orderId);
+    if (
+      !order ||
+      (order.userId !== session.user.id &&
+        !(session.user.email && order.email === session.user.email))
+    ) {
+      return { ok: false, error: "Order not found" };
+    }
     if (order.razorpayOrderId !== parsed.data.razorpayOrderId) {
       return { ok: false, error: "Order mismatch" };
     }
@@ -285,18 +271,7 @@ export async function verifyAndFulfillPayment(input: {
       paymentId: parsed.data.razorpayPaymentId,
       signature: parsed.data.razorpaySignature,
     });
-    if (!valid) {
-      void import("@/lib/logging/system-log").then(({ logError }) =>
-        logError({
-          category: "payment",
-          action: "SIGNATURE_INVALID",
-          message: "Invalid payment signature",
-          entityType: "Order",
-          entityId: parsed.data.orderId,
-        })
-      );
-      return { ok: false, error: "Invalid payment signature" };
-    }
+    if (!valid) return { ok: false, error: "Invalid payment signature" };
 
     const { fulfillPaidOrder } = await import("@/lib/fulfillment");
     await fulfillPaidOrder(order.id, parsed.data.razorpayPaymentId);
@@ -306,15 +281,6 @@ export async function verifyAndFulfillPayment(input: {
       successUrl: successUrlFor(order, session.user.id, true),
     };
   } catch {
-    void import("@/lib/logging/system-log").then(({ logError }) =>
-      logError({
-        category: "payment",
-        action: "VERIFY_FAILED",
-        message: "Payment verification failed",
-        entityType: "Order",
-        entityId: input.orderId,
-      })
-    );
     return { ok: false, error: "Payment verification failed" };
   }
 }

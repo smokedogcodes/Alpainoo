@@ -11,9 +11,21 @@ function needsLogin(pathname: string) {
   );
 }
 
+/** Static files under /products/*.jpg must not be treated as product slugs. */
+function isStaticAssetPath(pathname: string) {
+  return /\.(?:avif|webp|png|jpe?g|gif|svg|ico|css|js|map|woff2?|ttf|txt|xml|json)$/i.test(
+    pathname
+  );
+}
+
 export default auth((req) => {
   const url = req.nextUrl.clone();
   const path = url.pathname;
+
+  // Let CDN/assets serve real files; never opaque-redirect image URLs.
+  if (isStaticAssetPath(path)) {
+    return NextResponse.next();
+  }
 
   // Opaque gateway: /c/<code>/... → internal route (URL stays opaque)
   const rewritten = resolveOpaquePath(path);

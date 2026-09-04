@@ -1,22 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listProducts } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
 import { Button } from "@/components/ui/button";
 import { HeroOrb } from "@/components/motion/hero-orb";
 import { FadeIn, Stagger, StaggerItem } from "@/components/motion/fade-in";
 
 export default async function HomePage() {
-  const bestsellers = await prisma.product.findMany({
-    where: { isHidden: false },
-    orderBy: { reviewCount: "desc" },
-    take: 4,
-  });
-  const newest = await prisma.product.findMany({
-    where: { isHidden: false },
-    orderBy: { createdAt: "desc" },
-    take: 4,
-  });
+  const [bestsellers, newest] = await Promise.all([
+    listProducts({ orderBy: "reviewCount", orderDir: "desc", take: 4 }),
+    listProducts({ orderBy: "createdAt", orderDir: "desc", take: 4 }),
+  ]);
 
   return (
     <>
@@ -123,7 +117,7 @@ export default async function HomePage() {
                             alt={p.title}
                             fill
                             sizes="80px"
-                            quality={90}
+                            quality={75}
                             className="object-cover"
                           />
                         </Link>
@@ -179,7 +173,7 @@ export default async function HomePage() {
                       alt={c.label}
                       fill
                       sizes="208px"
-                      quality={90}
+                      quality={75}
                       className="object-cover transition duration-700 group-hover:scale-110"
                     />
                   </div>

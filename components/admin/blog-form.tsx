@@ -9,6 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { upsertBlog } from "@/lib/actions/admin";
 import { parseJsonArray } from "@/lib/utils";
 
+function toDatetimeLocal(value: Date | string | null | undefined) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function BlogForm({
   post,
 }: {
@@ -20,6 +28,9 @@ export function BlogForm({
     coverImage: string | null;
     tags: string;
     published: boolean;
+    scheduledAt?: Date | string | null;
+    metaTitle?: string | null;
+    metaDescription?: string | null;
   };
 }) {
   const router = useRouter();
@@ -58,6 +69,36 @@ export function BlogForm({
       <div>
         <Label htmlFor="coverImage">Cover image URL</Label>
         <Input id="coverImage" name="coverImage" defaultValue={post?.coverImage || ""} className="mt-1.5" />
+      </div>
+      <div>
+        <Label htmlFor="scheduledAt">Schedule publish (optional)</Label>
+        <Input
+          id="scheduledAt"
+          name="scheduledAt"
+          type="datetime-local"
+          defaultValue={toDatetimeLocal(post?.scheduledAt)}
+          className="mt-1.5"
+        />
+      </div>
+      <div>
+        <Label htmlFor="metaTitle">SEO title</Label>
+        <Input
+          id="metaTitle"
+          name="metaTitle"
+          maxLength={120}
+          defaultValue={post?.metaTitle || ""}
+          className="mt-1.5"
+        />
+      </div>
+      <div>
+        <Label htmlFor="metaDescription">SEO description</Label>
+        <Textarea
+          id="metaDescription"
+          name="metaDescription"
+          maxLength={320}
+          defaultValue={post?.metaDescription || ""}
+          className="mt-1.5"
+        />
       </div>
       <label className="flex min-h-[44px] items-center gap-2 text-sm">
         <input type="checkbox" name="published" defaultChecked={post?.published ?? true} />
