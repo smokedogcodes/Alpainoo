@@ -1,17 +1,44 @@
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { ProductForm } from "@/components/admin/product-form";
 import { VariantManager } from "@/components/admin/variant-manager";
 import { listVariants } from "@/lib/actions/variants";
+import { getProductById } from "@/lib/db/products";
+import { asD1, getD1, toDate } from "@/lib/db/d1";
 
 export default async function EditProductPage({ params }: { params: { id: string } }) {
-  const product = await prisma.product.findUnique({
-    where: { id: params.id },
-    include: { stockLogs: { orderBy: { createdAt: "desc" }, take: 10 } },
-  });
+  const product = await getProductById(params.id);
   if (!product) notFound();
 
   const variants = await listVariants(product.id);
+
+  let stockLogs: { id: string; change: number; note: string | null; createdAt: Date }[] = [];
+  const db = await getD1();
+  if (db) {
+    const res = await asD1(db)
+      .prepare(
+        `SELECT id, change, note, createdAt FROM StockLog WHERE productId = ? ORDER BY createdAt DESC LIMIT 10`
+      )
+      .bind(product.id)
+      .all();
+    stockLogs = ((res.results || []) as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      change: Number(r.change),
+      note: r.note != null ? String(r.note) : null,
+      createdAt: toDate(r.createdAt),
+    }));
+  } else {
+    try {
+      const { getPrismaAsync } = await import("@/lib/prisma");
+      const prisma = await getPrismaAsync();
+      stockLogs = await prisma.stockLog.findMany({
+        where: { productId: product.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
+    } catch {
+      stockLogs = [];
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -41,7 +68,7 @@ export default async function EditProductPage({ params }: { params: { id: string
       <div className="rounded-lg border border-border bg-white p-4">
         <h2 className="font-display text-xl">Stock ledger</h2>
         <ul className="mt-3 divide-y divide-border text-sm">
-          {product.stockLogs.map((log) => (
+          {stockLogs.map((log) => (
             <li key={log.id} className="flex justify-between gap-3 py-2">
               <span>
                 {log.change > 0 ? "+" : ""}
@@ -50,7 +77,7 @@ export default async function EditProductPage({ params }: { params: { id: string
               <span className="text-muted">{log.createdAt.toLocaleString()}</span>
             </li>
           ))}
-          {!product.stockLogs.length && <li className="py-2 text-muted">No stock changes yet.</li>}
+          {!stockLogs.length && <li className="py-2 text-muted">No stock changes yet.</li>}
         </ul>
       </div>
     </div>

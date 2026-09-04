@@ -225,6 +225,40 @@ export async function listOrdersForUser(userId: string) {
   });
 }
 
+/** Admin order list (optional status filter). */
+export async function listAdminOrders(opts?: {
+  status?: string;
+}): Promise<OrderWithItems[]> {
+  const db = await getD1();
+  if (db) {
+    const d1 = asD1(db);
+    const res = opts?.status
+      ? await d1
+          .prepare(
+            `SELECT * FROM "Order" WHERE orderStatus = ? ORDER BY createdAt DESC`
+          )
+          .bind(opts.status)
+          .all()
+      : await d1
+          .prepare(`SELECT * FROM "Order" ORDER BY createdAt DESC`)
+          .all();
+    const out: OrderWithItems[] = [];
+    for (const row of res.results || []) {
+      const bundle = await loadOrderBundle(db, String((row as { id: string }).id));
+      if (bundle) out.push(bundle);
+    }
+    return out;
+  }
+
+  const { getPrismaAsync } = await import("@/lib/prisma");
+  const prisma = await getPrismaAsync();
+  return prisma.order.findMany({
+    where: opts?.status ? { orderStatus: opts.status } : {},
+    include: { shipment: true, items: { include: { product: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 /** Mark paid + decrement stock (D1 batch or Prisma transaction). */
 export async function fulfillPaidOrderDb(
   orderId: string,

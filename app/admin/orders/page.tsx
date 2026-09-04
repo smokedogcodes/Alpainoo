@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/utils";
 import { OrderStatusSelect } from "@/components/admin/order-status-select";
 import { AdminOrderActions } from "@/components/admin/admin-order-actions";
 import { requireAdmin } from "@/lib/auth/admin";
+import { listAdminOrders } from "@/lib/db/orders";
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -12,12 +12,7 @@ export default async function AdminOrdersPage({
 }) {
   await requireAdmin();
 
-  const where = searchParams.status ? { orderStatus: searchParams.status } : {};
-  const orders = await prisma.order.findMany({
-    where,
-    include: { shipment: true, items: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const orders = await listAdminOrders({ status: searchParams.status });
 
   const statuses = [
     "PENDING",

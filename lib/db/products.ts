@@ -1,10 +1,11 @@
 import type { Product } from "@prisma/client";
+import { asD1, getD1 } from "@/lib/db/d1";
 import {
-  getD1,
   getProductByIdD1,
   getProductBySlugD1,
   listFacetsD1,
   listProductsD1,
+  mapProduct,
   type ProductListOpts,
 } from "@/lib/db/d1-products";
 
@@ -105,4 +106,18 @@ export async function searchProductsLite(q: string, take = 3) {
     sellingPrice: p.sellingPrice,
     images: p.images,
   }));
+}
+
+/** Admin catalog including hidden products. */
+export async function listAdminProducts(): Promise<Product[]> {
+  const db = await getD1();
+  if (db) {
+    const res = await asD1(db)
+      .prepare(`SELECT * FROM Product ORDER BY updatedAt DESC`)
+      .all();
+    return (res.results || []).map((r: Record<string, unknown>) => mapProduct(r));
+  }
+  const { getPrismaAsync } = await import("@/lib/prisma");
+  const prisma = await getPrismaAsync();
+  return prisma.product.findMany({ orderBy: { updatedAt: "desc" } });
 }

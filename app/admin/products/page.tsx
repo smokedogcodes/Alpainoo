@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listAdminProducts } from "@/lib/db/products";
 import { formatINR } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductAdminActions } from "@/components/admin/product-actions";
 
 export default async function AdminProductsPage() {
-  const products = await prisma.product.findMany({ orderBy: { updatedAt: "desc" } });
+  const products = await listAdminProducts();
 
   return (
     <div className="space-y-6">

@@ -1,29 +1,16 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
 import { UserRoleToggle } from "@/components/admin/user-role-toggle";
 import { segmentUsers } from "@/lib/crm/segments";
+import { listUsers } from "@/lib/db/users";
 import { formatINR } from "@/lib/utils";
 
 export default async function AdminUsersPage() {
   await requireAdmin();
 
-  const [users, segments] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        image: true,
-      },
-    }),
-    segmentUsers(),
-  ]);
+  const [users, segments] = await Promise.all([listUsers(), segmentUsers()]);
 
-  const adminCount = users.filter((u) => u.role === "ADMIN").length;
+  const adminCount = users.filter((u: { role: string }) => u.role === "ADMIN").length;
   const repeatBuyers = segments.filter((s) => s.segment === "repeat_buyer");
   const highValue = segments.filter((s) => s.segment === "high_value");
 
@@ -81,7 +68,7 @@ export default async function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {users.map((u: { id: string; name: string | null; email: string; role: string; createdAt: Date }) => (
               <tr key={u.id} className="border-b border-border last:border-0">
                 <td className="px-4 py-3">
                   <p className="font-medium">{u.name || "—"}</p>

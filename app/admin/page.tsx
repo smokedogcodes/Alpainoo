@@ -4,6 +4,8 @@ import { RevenueChart, StatusChart } from "@/components/admin/charts";
 
 export default async function AdminOverviewPage() {
   const data = await getAnalytics();
+  const lowStock = data.lowStock as { id: string; title: string; stock: number }[];
+  const topProducts = data.topProducts as { title: string; units: number }[];
 
   return (
     <div className="space-y-8">
@@ -24,12 +26,14 @@ export default async function AdminOverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-white p-4">
-          <h2 className="font-display text-xl mb-4">Revenue (14 days)</h2>
+          <h2 className="mb-4 font-display text-xl">Revenue (14 days)</h2>
           <RevenueChart data={data.revenueTrend} />
         </div>
         <div className="rounded-lg border border-border bg-white p-4">
-          <h2 className="font-display text-xl mb-4">Orders by status</h2>
-          <StatusChart data={data.statusCounts} />
+          <h2 className="mb-4 font-display text-xl">Orders by status</h2>
+          <StatusChart
+            data={data.statusCounts as { orderStatus: string; _count: number }[]}
+          />
         </div>
       </div>
 
@@ -37,25 +41,27 @@ export default async function AdminOverviewPage() {
         <div className="rounded-lg border border-border bg-white p-4">
           <h2 className="font-display text-xl">Low stock alerts</h2>
           <ul className="mt-3 divide-y divide-border">
-            {data.lowStock.map((p) => (
+            {lowStock.map((p) => (
               <li key={p.id} className="flex justify-between py-2 text-sm">
                 <span>{p.title}</span>
                 <span className="font-medium text-price-sale">{p.stock} left</span>
               </li>
             ))}
-            {!data.lowStock.length && <li className="py-2 text-sm text-muted">All stocked up.</li>}
+            {!lowStock.length && (
+              <li className="py-2 text-sm text-muted">All stocked up.</li>
+            )}
           </ul>
         </div>
         <div className="rounded-lg border border-border bg-white p-4">
           <h2 className="font-display text-xl">Top products</h2>
           <ul className="mt-3 divide-y divide-border">
-            {data.topProducts.map((p) => (
+            {topProducts.map((p) => (
               <li key={p.title} className="flex justify-between py-2 text-sm">
                 <span>{p.title}</span>
                 <span>{p.units} units</span>
               </li>
             ))}
-            {!data.topProducts.length && (
+            {!topProducts.length && (
               <li className="py-2 text-sm text-muted">No sales yet.</li>
             )}
           </ul>
