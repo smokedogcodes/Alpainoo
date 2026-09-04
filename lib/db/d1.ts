@@ -27,8 +27,10 @@ export async function getUploadsR2(): Promise<R2Bucket | null> {
   return env?.UPLOADS ?? null;
 }
 
-/** eslint-disable-next-line @typescript-eslint/no-explicit-any */
+/** Thin cast for D1 prepared statements across Workers types. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- D1 bindings vary by runtime
 export function asD1(db: D1Database): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return db as any;
 }
 

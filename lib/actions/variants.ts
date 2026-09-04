@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
-import { asD1, cuidLike, getD1, sqlNow } from "@/lib/db/d1";
+import { asD1, cuidLike, getD1 } from "@/lib/db/d1";
 
 export type VariantItem = {
   id: string;
