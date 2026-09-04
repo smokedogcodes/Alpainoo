@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
 import { KnowledgeAdmin } from "@/components/admin/knowledge-admin";
+import { listKnowledgeArticles } from "@/lib/db/knowledge";
 
 export default async function AdminKnowledgePage() {
   await requireAdmin();
-  const articles = await prisma.knowledgeArticle.findMany({
-    orderBy: { updatedAt: "desc" },
-  });
+  const articles = await listKnowledgeArticles();
 
   return (
     <div className="space-y-6">

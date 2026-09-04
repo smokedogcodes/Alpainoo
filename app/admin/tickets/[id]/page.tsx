@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
 import { TicketAdminActions } from "@/components/admin/ticket-actions";
+import { getAdminTicket } from "@/lib/db/tickets";
 
 export default async function AdminTicketDetailPage({
   params,
@@ -11,18 +11,7 @@ export default async function AdminTicketDetailPage({
 }) {
   await requireAdmin();
 
-  const ticket = await prisma.supportTicket.findUnique({
-    where: { id: params.id },
-    include: {
-      user: { select: { id: true, name: true, email: true, role: true, createdAt: true } },
-      session: {
-        include: {
-          messages: { orderBy: { createdAt: "asc" } },
-        },
-      },
-    },
-  });
-
+  const ticket = await getAdminTicket(params.id);
   if (!ticket) notFound();
 
   return (
@@ -36,16 +25,18 @@ export default async function AdminTicketDetailPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-border bg-white p-4 space-y-2 text-sm">
+        <div className="space-y-2 rounded-lg border border-border bg-white p-4 text-sm">
           <h2 className="font-display text-xl">Customer</h2>
           <p>
-            <span className="text-muted">Name:</span> {ticket.name || ticket.user?.name || "—"}
+            <span className="text-muted">Name:</span>{" "}
+            {ticket.name || ticket.user?.name || "—"}
           </p>
           <p>
             <span className="text-muted">Email:</span> {ticket.email}
           </p>
           <p>
-            <span className="text-muted">User ID:</span> {ticket.userId || ticket.user?.id || "Guest"}
+            <span className="text-muted">User ID:</span>{" "}
+            {ticket.userId || ticket.user?.id || "Guest"}
           </p>
           <p>
             <span className="text-muted">Category:</span> {ticket.category}
@@ -67,18 +58,21 @@ export default async function AdminTicketDetailPage({
       </div>
 
       <div className="rounded-lg border border-border bg-white p-4">
-        <h2 className="font-display text-xl mb-3">Ticket description / transcript snapshot</h2>
+        <h2 className="mb-3 font-display text-xl">Ticket description / transcript snapshot</h2>
         <pre className="whitespace-pre-wrap text-sm text-foreground/90">{ticket.description}</pre>
       </div>
 
       <div className="rounded-lg border border-border bg-white p-4">
-        <h2 className="font-display text-xl mb-3">Chat history (audit log)</h2>
+        <h2 className="mb-3 font-display text-xl">Chat history (audit log)</h2>
         {!ticket.session?.messages?.length ? (
           <p className="text-sm text-muted">No linked chat messages.</p>
         ) : (
           <ul className="space-y-3">
             {ticket.session.messages.map((m) => (
-              <li key={m.id} className="rounded border border-border/50 bg-cream px-3 py-2 text-sm">
+              <li
+                key={m.id}
+                className="rounded border border-border/50 bg-cream px-3 py-2 text-sm"
+              >
                 <div className="mb-1 flex flex-wrap gap-2 text-xs text-muted">
                   <span className="font-semibold uppercase text-sage">{m.role}</span>
                   {m.source && <span>source: {m.source}</span>}

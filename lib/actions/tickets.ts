@@ -1,14 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
+import { updateTicketFields } from "@/lib/db/tickets";
+import {
+  deleteKnowledgeArticleDb,
+  toggleKnowledgeArticleDb,
+  upsertKnowledgeArticleDb,
+} from "@/lib/db/knowledge";
 
 export async function updateTicketStatus(id: string, status: string) {
   await requireAdmin();
   const allowed = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
   if (!allowed.includes(status)) throw new Error("Invalid status");
-  await prisma.supportTicket.update({ where: { id }, data: { status } });
+  await updateTicketFields(id, { status });
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${id}`);
 }
@@ -17,10 +22,7 @@ export async function replyToTicket(id: string, adminReply: string) {
   await requireAdmin();
   const reply = adminReply.trim();
   if (!reply) throw new Error("Reply required");
-  await prisma.supportTicket.update({
-    where: { id },
-    data: { adminReply: reply, status: "IN_PROGRESS" },
-  });
+  await updateTicketFields(id, { adminReply: reply, status: "IN_PROGRESS" });
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${id}`);
 }
@@ -43,7 +45,8 @@ export async function upsertKnowledgeArticle(input: {
       .filter(Boolean)
   );
 
-  const data = {
+  await upsertKnowledgeArticleDb({
+    id: input.id,
     slug: input.slug.trim().toLowerCase().replace(/\s+/g, "-"),
     title: input.title.trim(),
     question: input.question.trim(),
@@ -51,24 +54,18 @@ export async function upsertKnowledgeArticle(input: {
     keywords: keywordsJson,
     category: input.category.trim() || "GENERAL",
     active: input.active,
-  };
-
-  if (input.id) {
-    await prisma.knowledgeArticle.update({ where: { id: input.id }, data });
-  } else {
-    await prisma.knowledgeArticle.create({ data });
-  }
+  });
   revalidatePath("/admin/knowledge");
 }
 
 export async function deleteKnowledgeArticle(id: string) {
   await requireAdmin();
-  await prisma.knowledgeArticle.delete({ where: { id } });
+  await deleteKnowledgeArticleDb(id);
   revalidatePath("/admin/knowledge");
 }
 
 export async function toggleKnowledgeArticle(id: string, active: boolean) {
   await requireAdmin();
-  await prisma.knowledgeArticle.update({ where: { id }, data: { active } });
+  await toggleKnowledgeArticleDb(id, active);
   revalidatePath("/admin/knowledge");
 }

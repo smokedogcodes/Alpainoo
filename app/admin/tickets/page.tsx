@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/admin";
+import { listAdminTickets } from "@/lib/db/tickets";
 
 export default async function AdminTicketsPage({
   searchParams,
@@ -9,13 +9,7 @@ export default async function AdminTicketsPage({
 }) {
   await requireAdmin();
 
-  const where = searchParams.status ? { status: searchParams.status } : {};
-  const tickets = await prisma.supportTicket.findMany({
-    where,
-    include: { user: { select: { id: true, name: true, email: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-
+  const tickets = await listAdminTickets({ status: searchParams.status });
   const statuses = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 
   return (
@@ -50,9 +44,10 @@ export default async function AdminTicketsPage({
           <p className="text-sm text-muted">No tickets yet.</p>
         )}
         {tickets.map((t) => {
-          const overdue = t.status === "OPEN" || t.status === "IN_PROGRESS"
-            ? t.dueAt.getTime() < Date.now()
-            : false;
+          const overdue =
+            t.status === "OPEN" || t.status === "IN_PROGRESS"
+              ? t.dueAt.getTime() < Date.now()
+              : false;
           return (
             <Link
               key={t.id}
