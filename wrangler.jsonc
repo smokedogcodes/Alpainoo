@@ -18,14 +18,14 @@
     {
       "binding": "DB",
       "database_name": "alpainoo-db",
-      "database_id": "062d29e1-f004-4cbb-966a-03dec737903c"
+      "database_id": "225d3b73-040a-45fb-8f98-3df7528d8181"
     }
   ],
   // Uncomment after enabling R2 in the dashboard and creating `alpainoo-uploads`:
   // "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "alpainoo-uploads" }],
   "vars": {
     "AUTH_TRUST_HOST": "true",
-    "AUTH_URL": "https://alpainoo.smokedog.workers.dev",
-    "NEXT_PUBLIC_APP_URL": "https://alpainoo.smokedog.workers.dev"
+    "AUTH_URL": "https://alpainoo.alpainoocompany.workers.dev",
+    "NEXT_PUBLIC_APP_URL": "https://alpainoo.alpainoocompany.workers.dev"
   }
 }

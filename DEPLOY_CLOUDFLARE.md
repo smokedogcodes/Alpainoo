@@ -184,6 +184,6 @@ npm run cf:preview
 | Google login fails | Match `AUTH_URL` + OAuth callback to Worker URL |
 | Emails skipped | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` |
 
-**Live Worker (current):** https://alpainoo.smokedog.workers.dev
+**Live Worker (current):** https://alpainoo.alpainoocompany.workers.dev
 
 Audit tables are filled by **app code** (`lib/logging/db-audit.ts`). Postgres trigger SQL is not used on D1.
