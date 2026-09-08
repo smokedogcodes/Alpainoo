@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requirePermission } from "@/lib/auth/admin";
 import { asD1, cuidLike, getD1, sqlNow } from "@/lib/db/d1";
 
 const CouponSchema = z.object({
@@ -15,7 +15,7 @@ const CouponSchema = z.object({
 });
 
 export async function createCoupon(formData: FormData) {
-  await requireAdmin();
+  await requirePermission("coupons", "edit");
 
   const raw = {
     code: String(formData.get("code") || "").toUpperCase(),
@@ -78,10 +78,12 @@ export async function createCategoryAction(formData: FormData) {
     description: String(formData.get("description") || "") || undefined,
     sortOrder: formData.get("sortOrder") ? Number(formData.get("sortOrder")) : 0,
   });
+  revalidatePath("/admin/categories");
+  revalidatePath("/admin/products/new");
 }
 
 export async function sendNewsletterCampaign(formData: FormData) {
-  await requireAdmin();
+  await requirePermission("marketing", "edit");
   const subject = String(formData.get("subject") || "").trim();
   const bodyHtml = String(formData.get("bodyHtml") || "").trim();
   if (!subject || !bodyHtml) throw new Error("Subject and body required");

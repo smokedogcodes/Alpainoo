@@ -44,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {children}
           <CookieConsent />
           <TrackingPixels />
-          <Toaster richColors position="top-center" />
+          <Toaster richColors position="top-center" closeButton style={{ zIndex: 99999 }} />
           {process.env.VERCEL === "1" ? <Analytics /> : null}
         </AuthProvider>
       </body>

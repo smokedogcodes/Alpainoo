@@ -2,17 +2,19 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Leaf } from "lucide-react";
 import { auth } from "@/auth";
-import { getProductBySlug } from "@/lib/db/products";
+import { getProductBySlug, listProducts } from "@/lib/db/products";
 import { formatINR, parseJsonArray } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { PincodeChecker } from "@/components/product/pincode-checker";
 import { ProductGallery } from "@/components/product/product-gallery";
+import { ProductCard } from "@/components/product/product-card";
 import { ReviewForm } from "@/components/product/review-form";
 import { WishlistButton } from "@/components/product/wishlist-button";
 import { listApprovedReviews } from "@/lib/actions/reviews";
 import { isInWishlist } from "@/lib/actions/wishlist";
+import { listPublicVariants } from "@/lib/actions/variants";
 
 type Props = { params: { slug: string } };
 
@@ -32,10 +34,13 @@ export default async function ProductDetailPage({ params }: Props) {
   const benefits = parseJsonArray(product.benefits);
   const images = parseJsonArray(product.images);
   const session = await auth();
-  const [reviews, wished] = await Promise.all([
+  const [reviews, wished, relatedRaw, variants] = await Promise.all([
     listApprovedReviews(product.id),
     isInWishlist(product.id),
+    listProducts({ category: product.category, take: 8, orderBy: "reviewCount", orderDir: "desc" }),
+    listPublicVariants(product.id).catch(() => []),
   ]);
+  const related = relatedRaw.filter((p) => p.id !== product.id).slice(0, 4);
 
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://alpainoo.com").replace(/\/$/, "");
   const jsonLd = {
@@ -101,7 +106,7 @@ export default async function ProductDetailPage({ params }: Props) {
             ))}
           </ul>
           <div className="mt-8 space-y-4">
-            <AddToCartButton product={product} />
+            <AddToCartButton product={product} variants={variants} />
             <WishlistButton productId={product.id} initialWished={wished} />
             <PincodeChecker />
           </div>
@@ -152,6 +157,32 @@ export default async function ProductDetailPage({ params }: Props) {
           />
         </TabsContent>
       </Tabs>
+
+      {related.length > 0 ? (
+        <section className="mt-16">
+          <h2 className="font-display text-2xl">You may also like</h2>
+          <p className="mt-1 text-sm text-muted">More from {product.category}</p>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={{
+                  id: p.id,
+                  title: p.title,
+                  slug: p.slug,
+                  brand: p.brand,
+                  mrp: p.mrp,
+                  sellingPrice: p.sellingPrice,
+                  discount: p.discount,
+                  stock: p.stock,
+                  rating: p.rating,
+                  images: p.images,
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -185,3 +185,48 @@ export async function updateTicketFields(
   const prisma = await getPrismaAsync();
   await prisma.supportTicket.update({ where: { id }, data });
 }
+
+export async function getTicketById(id: string): Promise<SupportTicket | null> {
+  const db = await getD1();
+  if (db) {
+    const row = await asD1(db)
+      .prepare(`SELECT * FROM SupportTicket WHERE id = ? LIMIT 1`)
+      .bind(id)
+      .first();
+    return row ? mapTicket(row as Record<string, unknown>) : null;
+  }
+  const { getPrismaAsync } = await import("@/lib/prisma");
+  const prisma = await getPrismaAsync();
+  return prisma.supportTicket.findUnique({ where: { id } });
+}
+
+/** Tickets for a signed-in customer (by user id and/or email). */
+export async function listCustomerTickets(input: {
+  userId: string;
+  email: string;
+}): Promise<SupportTicket[]> {
+  const email = input.email.trim().toLowerCase();
+  const db = await getD1();
+  if (db) {
+    const res = await asD1(db)
+      .prepare(
+        `SELECT * FROM SupportTicket
+         WHERE userId = ? OR lower(email) = ?
+         ORDER BY updatedAt DESC
+         LIMIT 50`
+      )
+      .bind(input.userId, email)
+      .all();
+    return ((res.results || []) as Record<string, unknown>[]).map(mapTicket);
+  }
+
+  const { getPrismaAsync } = await import("@/lib/prisma");
+  const prisma = await getPrismaAsync();
+  return prisma.supportTicket.findMany({
+    where: {
+      OR: [{ userId: input.userId }, { email: { equals: email } }],
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
+}

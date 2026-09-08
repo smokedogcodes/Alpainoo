@@ -1,4 +1,9 @@
-import { prisma } from "@/lib/prisma";
+import {
+  listActiveAnswerCache,
+  incrementAnswerCacheHit,
+  upsertAnswerCache,
+} from "@/lib/db/chat";
+import { isProductSpecificStockQuery, isProductComparisonQuery } from "@/lib/chat/intent";
 
 /** Token-overlap score required to reuse a cached answer (skip Gemini). */
 export const CACHE_MATCH_THRESHOLD = 0.6;
@@ -79,17 +84,16 @@ export function shouldCacheAnswer(opts: {
   return true;
 }
 
+const GENERIC_STOCK_FAQ_ANSWER_RE =
+  /product pages and the shop catalog show live stock|\bin stock\b|\bunits available\b/i;
+
 export async function findCachedAnswer(message: string): Promise<{
   id: string;
   answer: string;
   intent: string | null;
   score: number;
 } | null> {
-  const entries = await prisma.chatAnswerCache.findMany({
-    where: { active: true },
-    orderBy: [{ hitCount: "desc" }, { updatedAt: "desc" }],
-    take: 200,
-  });
+  const entries = await listActiveAnswerCache(200);
 
   let best: { id: string; answer: string; intent: string | null; score: number } | null = null;
   for (const entry of entries) {
@@ -105,17 +109,20 @@ export async function findCachedAnswer(message: string): Promise<{
   }
 
   if (!best || best.score < CACHE_MATCH_THRESHOLD) return null;
+  if (
+    isProductSpecificStockQuery(message) &&
+    GENERIC_STOCK_FAQ_ANSWER_RE.test(best.answer)
+  ) {
+    return null;
+  }
+  if (isProductComparisonQuery(message) && GENERIC_STOCK_FAQ_ANSWER_RE.test(best.answer)) {
+    return null;
+  }
   return best;
 }
 
 export async function recordCacheHit(id: string): Promise<void> {
-  await prisma.chatAnswerCache.update({
-    where: { id },
-    data: {
-      hitCount: { increment: 1 },
-      lastHitAt: new Date(),
-    },
-  });
+  await incrementAnswerCacheHit(id);
 }
 
 export async function storeCachedAnswer(opts: {
@@ -131,25 +138,12 @@ export async function storeCachedAnswer(opts: {
     Array.from(new Set(tokenize(opts.questionText))).slice(0, 24)
   );
 
-  await prisma.chatAnswerCache.upsert({
-    where: { questionNormalized },
-    create: {
-      questionText: opts.questionText.trim(),
-      questionNormalized,
-      answer: opts.answer.trim(),
-      source: opts.source,
-      intent: opts.intent ?? null,
-      keywords,
-      hitCount: 0,
-      active: true,
-    },
-    update: {
-      questionText: opts.questionText.trim(),
-      answer: opts.answer.trim(),
-      source: opts.source,
-      intent: opts.intent ?? null,
-      keywords,
-      active: true,
-    },
+  await upsertAnswerCache({
+    questionText: opts.questionText.trim(),
+    questionNormalized,
+    answer: opts.answer.trim(),
+    source: opts.source,
+    intent: opts.intent ?? null,
+    keywords,
   });
 }

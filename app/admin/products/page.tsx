@@ -1,20 +1,29 @@
+import { requireScreenView } from "@/lib/auth/require-screen";
 import Link from "next/link";
 import { listAdminProducts } from "@/lib/db/products";
 import { formatINR } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductAdminActions } from "@/components/admin/product-actions";
+import { getAdminAccess } from "@/lib/auth/admin";
+import { can } from "@/lib/auth/permissions";
 
 export default async function AdminProductsPage() {
-  const products = await listAdminProducts();
+  await requireScreenView("products");
+  const [products, access] = await Promise.all([listAdminProducts(), getAdminAccess()]);
+  const canEdit =
+    access?.effectiveRole === "ADMIN" ||
+    (access ? can(access.permissions, "products", "edit") : false);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="font-display text-3xl">Products</h1>
-        <Button asChild>
-          <Link href="/admin/products/new">Add product</Link>
-        </Button>
+        {canEdit && (
+          <Button asChild>
+            <Link href="/admin/products/new">Add product</Link>
+          </Button>
+        )}
       </div>
       <div className="space-y-3 lg:hidden">
         {products.map((p) => (

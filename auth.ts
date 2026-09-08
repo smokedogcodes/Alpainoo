@@ -7,17 +7,22 @@ import {
   updateUserRole,
   upsertUserByEmail,
 } from "@/lib/db/users";
+import { resolvePermissionMatrix } from "@/lib/auth/permissions";
 
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
       role: string;
+      permissions: string;
+      roleExpiresAt: string | null;
     } & DefaultSession["user"];
   }
 
   interface User {
     role?: string;
+    permissions?: string;
+    roleExpiresAt?: string | null;
   }
 }
 
@@ -42,6 +47,27 @@ async function ensureAdminRole(userId: string, email: string | null | undefined)
   const existing = await findUserById(userId);
   if (existing?.role === "ADMIN") return;
   await updateUserRole(userId, "ADMIN");
+}
+
+function applyUserTokenFields(
+  token: Record<string, unknown>,
+  dbUser: {
+    role: string;
+    permissions: string;
+    roleExpiresAt: Date | null;
+  }
+) {
+  const resolved = resolvePermissionMatrix({
+    role: dbUser.role,
+    permissionsJson: dbUser.permissions,
+    roleExpiresAt: dbUser.roleExpiresAt,
+  });
+  // Persist DB role; middleware uses effective via resolve again
+  token.role = resolved.expired ? "CUSTOMER" : dbUser.role;
+  token.permissions = dbUser.permissions || "[]";
+  token.roleExpiresAt = dbUser.roleExpiresAt
+    ? dbUser.roleExpiresAt.toISOString()
+    : null;
 }
 
 const useSecureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;
@@ -147,12 +173,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (token.sub) {
           const dbUser = await findUserById(token.sub);
-          (token as { role?: string }).role = dbUser?.role || "CUSTOMER";
+          if (dbUser) applyUserTokenFields(token as Record<string, unknown>, dbUser);
+          else (token as Record<string, unknown>).role = "CUSTOMER";
         } else if (token.email) {
           const dbUser = await findUserByEmail(String(token.email));
           if (dbUser) {
             token.sub = dbUser.id;
-            (token as { role?: string }).role = dbUser.role;
+            applyUserTokenFields(token as Record<string, unknown>, dbUser);
           }
         }
       } catch {
@@ -163,8 +190,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub || "";
-        session.user.role = (token as { role?: string }).role || "CUSTOMER";
+        const t = token as Record<string, unknown>;
+        session.user.id = (token.sub as string) || "";
+        session.user.role = typeof t.role === "string" ? t.role : "CUSTOMER";
+        session.user.permissions =
+          typeof t.permissions === "string" ? t.permissions : "[]";
+        session.user.roleExpiresAt =
+          typeof t.roleExpiresAt === "string" ? t.roleExpiresAt : null;
         if (token.name) session.user.name = token.name as string;
         if (token.email) session.user.email = token.email as string;
         if (token.picture) session.user.image = token.picture as string;

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isAdminDevBypass } from "@/lib/auth/admin";
+import { isAdminDevBypass, sessionAllowsAdminArea } from "@/lib/auth/admin";
 import { descriptiveToOpaquePath, resolveOpaquePath } from "@/lib/security/opaque-routes";
 
-const AUTH_REQUIRED_PREFIXES = ["/orders", "/checkout"];
+const AUTH_REQUIRED_PREFIXES = ["/orders", "/account"];
 
 function needsLogin(pathname: string) {
   return AUTH_REQUIRED_PREFIXES.some(
@@ -72,7 +72,12 @@ export default auth((req) => {
   }
 
   const role = req.auth?.user?.role;
-  if (!req.auth?.user || role !== "ADMIN") {
+  const permissions = (req.auth?.user as { permissions?: string } | undefined)?.permissions;
+  const roleExpiresAt = (req.auth?.user as { roleExpiresAt?: string | null } | undefined)
+    ?.roleExpiresAt;
+
+  const allowed = sessionAllowsAdminArea({ role, permissions, roleExpiresAt });
+  if (!req.auth?.user || !allowed) {
     if (isAdminApi) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -94,6 +99,8 @@ export const config = {
     "/api/admin/:path*",
     "/orders",
     "/orders/:path*",
+    "/account",
+    "/account/:path*",
     "/checkout",
     "/checkout/:path*",
     "/sale",

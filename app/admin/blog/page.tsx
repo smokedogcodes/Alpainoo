@@ -1,9 +1,11 @@
+import { requireScreenView } from "@/lib/auth/require-screen";
 import Link from "next/link";
 import { listAdminPosts } from "@/lib/db/blog";
 import { Button } from "@/components/ui/button";
 import { BlogAdminActions } from "@/components/admin/blog-actions";
 
 export default async function AdminBlogPage() {
+  await requireScreenView("blog");
   const posts = await listAdminPosts();
 
   return (

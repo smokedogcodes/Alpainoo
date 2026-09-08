@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { FieldLabel, RequiredHint } from "@/components/admin/field-label";
+import { AdminFormActions } from "@/components/admin/admin-form";
 import { addVariant, deleteVariant, type VariantItem } from "@/lib/actions/variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 export function VariantManager({
   productId,
@@ -107,8 +108,13 @@ export function VariantManager({
       </ul>
 
       <form onSubmit={onAdd} className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <RequiredHint />
+        </div>
         <div>
-          <Label htmlFor="variantName">Name</Label>
+          <FieldLabel htmlFor="variantName" required>
+            Name
+          </FieldLabel>
           <Input
             id="variantName"
             required
@@ -119,7 +125,9 @@ export function VariantManager({
           />
         </div>
         <div>
-          <Label htmlFor="variantSku">SKU</Label>
+          <FieldLabel htmlFor="variantSku" required>
+            SKU
+          </FieldLabel>
           <Input
             id="variantSku"
             required
@@ -129,7 +137,7 @@ export function VariantManager({
           />
         </div>
         <div>
-          <Label htmlFor="variantSize">Size</Label>
+          <FieldLabel htmlFor="variantSize">Size</FieldLabel>
           <Input
             id="variantSize"
             value={form.size}
@@ -138,7 +146,7 @@ export function VariantManager({
           />
         </div>
         <div>
-          <Label htmlFor="variantScent">Scent</Label>
+          <FieldLabel htmlFor="variantScent">Scent</FieldLabel>
           <Input
             id="variantScent"
             value={form.scent}
@@ -147,7 +155,7 @@ export function VariantManager({
           />
         </div>
         <div>
-          <Label htmlFor="variantStock">Stock</Label>
+          <FieldLabel htmlFor="variantStock">Stock</FieldLabel>
           <Input
             id="variantStock"
             type="number"
@@ -157,11 +165,11 @@ export function VariantManager({
             className="mt-1.5"
           />
         </div>
-        <div className="flex items-end">
+        <AdminFormActions className="flex items-end sm:col-span-2">
           <Button type="submit" disabled={pending} className="w-full sm:w-auto">
             Add variant
           </Button>
-        </div>
+        </AdminFormActions>
       </form>
     </div>
   );

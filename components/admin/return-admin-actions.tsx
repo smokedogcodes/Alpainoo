@@ -13,8 +13,16 @@ export function ReturnAdminActions({ id }: { id: string }) {
   function setStatus(status: "APPROVED" | "REJECTED") {
     startTransition(async () => {
       try {
-        await updateReturnStatus(id, status);
-        toast.success(status === "APPROVED" ? "Return approved" : "Return rejected");
+        const result = await updateReturnStatus(id, status);
+        if (status === "APPROVED") {
+          toast.success(
+            result.status === "REFUNDED"
+              ? "Return approved and refund issued"
+              : "Return approved"
+          );
+        } else {
+          toast.success("Return rejected");
+        }
         router.refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Update failed");

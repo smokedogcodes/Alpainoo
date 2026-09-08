@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requirePermission } from "@/lib/auth/admin";
 import { asD1, cuidLike, getD1, sqlNow, toBool, toDate } from "@/lib/db/d1";
 
 const SubmitSchema = z.object({
@@ -129,7 +129,7 @@ export async function listApprovedReviews(productId: string): Promise<ReviewList
 }
 
 export async function listPendingReviews(take = 50): Promise<ReviewListItem[]> {
-  await requireAdmin();
+  await requirePermission("reviews", "view");
 
   const db = await getD1();
   if (db) {
@@ -194,7 +194,7 @@ async function refreshProductRating(productId: string) {
 }
 
 export async function approveReview(id: string) {
-  await requireAdmin();
+  await requirePermission("reviews", "edit");
   if (!id) throw new Error("Invalid review");
 
   const db = await getD1();

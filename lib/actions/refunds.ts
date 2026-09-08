@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requirePermission } from "@/lib/auth/admin";
 import { asD1, getD1, sqlNow } from "@/lib/db/d1";
 import { createRefund } from "@/lib/razorpay";
 
 export async function refundOrder(orderId: string) {
-  await requireAdmin();
+  await requirePermission("orders", "edit");
   if (!orderId) throw new Error("Invalid order");
 
   const db = await getD1();

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { generateReport, toCsv, type ReportType } from "@/lib/reports";
-import { requireAdminApi } from "@/lib/auth/admin";
+import { requirePermissionApi } from "@/lib/auth/admin";
 
 const ALLOWED: ReportType[] = ["users", "sales", "inventory", "orders", "products", "discounts"];
 
 export async function GET(req: Request) {
-  const admin = await requireAdminApi();
+  const admin = await requirePermissionApi("reports", "view");
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

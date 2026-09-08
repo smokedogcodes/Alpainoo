@@ -1,21 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AdminFormActions } from "@/components/admin/admin-form";
+import { FieldLabel, RequiredHint } from "@/components/admin/field-label";
+import { ImageUploadField } from "@/components/admin/image-upload-field";
 import { upsertProduct } from "@/lib/actions/admin";
-import { compressImageForUpload } from "@/lib/images/compress-client";
 import { parseJsonArray } from "@/lib/utils";
+import { DEFAULT_CATEGORY_NAMES } from "@/lib/constants/categories";
+import { useCan } from "@/components/admin/admin-permissions";
+
+export type CategoryOption = { id: string; name: string; slug: string };
 
 type ProductFormValues = {
   id?: string;
   title?: string;
   brand?: string;
   category?: string;
+  categoryId?: string | null;
   description?: string;
   volume?: string | null;
   mrp?: number;
@@ -31,114 +37,223 @@ type ProductFormValues = {
   lowStockThreshold?: number | null;
 };
 
-export function ProductForm({ product }: { product?: ProductFormValues }) {
+export function ProductForm({
+  product,
+  categories = [],
+}: {
+  product?: ProductFormValues;
+  categories?: CategoryOption[];
+}) {
   const router = useRouter();
+  const canEdit = useCan("products", "edit");
   const benefits = parseJsonArray(product?.benefits).join("\n");
   const [imageUrls, setImageUrls] = useState(parseJsonArray(product?.images).join("\n"));
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  async function onUpload(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
-    try {
-      const body = new FormData();
-      for (const raw of Array.from(files)) {
-        const compressed = await compressImageForUpload(raw);
-        body.append("files", compressed);
-      }
-      const res = await fetch("/api/upload", { method: "POST", body });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      const existing = imageUrls
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const merged = [...existing, ...(data.urls as string[])];
-      setImageUrls(merged.join("\n"));
-      toast.success(`Uploaded ${data.urls.length} image(s)`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploading(false);
+  /** Always a dropdown — merge DB categories with built-in defaults so the UI never falls back to free text. */
+  const categoryOptions = useMemo(() => {
+    const byName = new Map<string, CategoryOption>();
+    for (const c of categories) {
+      byName.set(c.name.toLowerCase(), c);
     }
-  }
+    for (const name of DEFAULT_CATEGORY_NAMES) {
+      const key = name.toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, { id: `fallback:${slugSafe(name)}`, name, slug: slugSafe(name) });
+      }
+    }
+    if (product?.category && !byName.has(product.category.toLowerCase())) {
+      byName.set(product.category.toLowerCase(), {
+        id: `existing:${product.category}`,
+        name: product.category,
+        slug: slugSafe(product.category),
+      });
+    }
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories, product?.category]);
+
+  const defaultCategory =
+    product?.category ||
+    categories.find((c) => c.id === product?.categoryId)?.name ||
+    categoryOptions[0]?.name ||
+    "";
 
   return (
     <form
       className="mx-auto max-w-2xl space-y-4"
-      action={async (fd) => {
-        fd.set("images", imageUrls);
-        await upsertProduct(fd);
-        toast.success(product?.id ? "Product updated" : "Product created");
-        router.push("/admin/products");
-        router.refresh();
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+          const fd = new FormData(e.currentTarget);
+          fd.set("images", imageUrls);
+          await upsertProduct(fd);
+          toast.success(product?.id ? "Product updated successfully" : "Product created successfully");
+          router.push("/admin/products");
+        } catch (err) {
+          const msg =
+            err instanceof Error
+              ? err.message
+              : typeof err === "object" && err && "digest" in err
+                ? "Save failed — please refresh and try again"
+                : "Could not save product";
+          toast.error(msg === "Unauthorized" ? "You do not have permission to edit products" : msg);
+        } finally {
+          setSaving(false);
+        }
       }}
     >
       {product?.id && <input type="hidden" name="id" value={product.id} />}
+
+      <RequiredHint />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Label htmlFor="title">Title</Label>
+          <FieldLabel htmlFor="title" required>
+            Title
+          </FieldLabel>
           <Input id="title" name="title" required defaultValue={product?.title} className="mt-1.5" />
         </div>
+
         <div>
-          <Label htmlFor="brand">Brand</Label>
-          <Input id="brand" name="brand" required defaultValue={product?.brand} className="mt-1.5" />
+          <FieldLabel htmlFor="category" required>
+            Category
+          </FieldLabel>
+          <select
+            id="category"
+            name="category"
+            required
+            defaultValue={defaultCategory}
+            className="mt-1.5 flex h-10 w-full appearance-none rounded-md border border-input bg-white bg-[length:1rem] bg-[right_0.75rem_center] bg-no-repeat px-3 py-2 pr-10 text-sm"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%235a6b64'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E\")",
+            }}
+          >
+            <option value="" disabled>
+              Select category
+            </option>
+            {categoryOptions.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted">
+            Choose from Category master.{" "}
+            <a href="/admin/categories" className="text-sage underline">
+              Manage categories
+            </a>
+          </p>
         </div>
+
         <div>
-          <Label htmlFor="category">Category</Label>
-          <Input id="category" name="category" required defaultValue={product?.category} className="mt-1.5" />
+          <FieldLabel htmlFor="brand">Brand</FieldLabel>
+          <Input
+            id="brand"
+            name="brand"
+            defaultValue={product?.brand || "Alpainoo"}
+            className="mt-1.5"
+            placeholder="Alpainoo"
+          />
         </div>
+
         <div>
-          <Label htmlFor="sku">SKU</Label>
-          <Input id="sku" name="sku" required defaultValue={product?.sku} className="mt-1.5" />
+          <FieldLabel htmlFor="sku">SKU</FieldLabel>
+          <Input
+            id="sku"
+            name="sku"
+            defaultValue={product?.sku || ""}
+            className="mt-1.5"
+            placeholder="Auto-generated if left blank"
+          />
         </div>
+
         <div>
-          <Label htmlFor="volume">Volume / size</Label>
+          <FieldLabel htmlFor="volume">Volume / size</FieldLabel>
           <Input id="volume" name="volume" defaultValue={product?.volume || ""} className="mt-1.5" />
         </div>
+
         <div>
-          <Label htmlFor="mrp">MRP</Label>
-          <Input id="mrp" name="mrp" type="number" required defaultValue={product?.mrp} className="mt-1.5" />
+          <FieldLabel htmlFor="mrp" required>
+            MRP
+          </FieldLabel>
+          <Input id="mrp" name="mrp" type="number" required min={1} step="1" defaultValue={product?.mrp} className="mt-1.5" />
         </div>
+
         <div>
-          <Label htmlFor="sellingPrice">Selling price</Label>
+          <FieldLabel htmlFor="sellingPrice" required>
+            Selling price
+          </FieldLabel>
           <Input
             id="sellingPrice"
             name="sellingPrice"
             type="number"
             required
+            min={1}
+            step="1"
             defaultValue={product?.sellingPrice}
             className="mt-1.5"
           />
         </div>
+
         <div>
-          <Label htmlFor="stock">Stock</Label>
-          <Input id="stock" name="stock" type="number" required defaultValue={product?.stock ?? 0} className="mt-1.5" />
+          <FieldLabel htmlFor="stock" required>
+            Stock
+          </FieldLabel>
+          <Input
+            id="stock"
+            name="stock"
+            type="number"
+            required
+            min={0}
+            step="1"
+            defaultValue={product?.stock ?? 0}
+            className="mt-1.5"
+          />
         </div>
+
         <div>
-          <Label htmlFor="stockNote">Stock note (optional)</Label>
+          <FieldLabel htmlFor="stockNote">Stock note</FieldLabel>
           <Input id="stockNote" name="stockNote" placeholder="Inventory adjustment" className="mt-1.5" />
         </div>
       </div>
+
       <div>
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" name="description" required defaultValue={product?.description} className="mt-1.5" />
+        <FieldLabel htmlFor="description">Description</FieldLabel>
+        <Textarea
+          id="description"
+          name="description"
+          defaultValue={product?.description || ""}
+          className="mt-1.5"
+          placeholder="Optional — defaults to the product title if empty"
+        />
       </div>
+
       <div>
-        <Label htmlFor="benefits">Key benefits (one per line)</Label>
+        <FieldLabel htmlFor="benefits">Key benefits (one per line)</FieldLabel>
         <Textarea id="benefits" name="benefits" defaultValue={benefits} className="mt-1.5" />
       </div>
+
       <div>
-        <Label htmlFor="ingredients">Ingredients</Label>
-        <Textarea id="ingredients" name="ingredients" defaultValue={product?.ingredients || ""} className="mt-1.5" />
+        <FieldLabel htmlFor="ingredients">Ingredients</FieldLabel>
+        <Textarea
+          id="ingredients"
+          name="ingredients"
+          defaultValue={product?.ingredients || ""}
+          className="mt-1.5"
+        />
       </div>
+
       <div>
-        <Label htmlFor="usage">Usage instructions</Label>
+        <FieldLabel htmlFor="usage">Usage instructions</FieldLabel>
         <Textarea id="usage" name="usage" defaultValue={product?.usage || ""} className="mt-1.5" />
       </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Label htmlFor="metaTitle">SEO title</Label>
+          <FieldLabel htmlFor="metaTitle">SEO title</FieldLabel>
           <Input
             id="metaTitle"
             name="metaTitle"
@@ -149,7 +264,7 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
           />
         </div>
         <div className="sm:col-span-2">
-          <Label htmlFor="metaDescription">SEO description</Label>
+          <FieldLabel htmlFor="metaDescription">SEO description</FieldLabel>
           <Textarea
             id="metaDescription"
             name="metaDescription"
@@ -159,7 +274,7 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
           />
         </div>
         <div>
-          <Label htmlFor="lowStockThreshold">Low stock threshold</Label>
+          <FieldLabel htmlFor="lowStockThreshold">Low stock threshold</FieldLabel>
           <Input
             id="lowStockThreshold"
             name="lowStockThreshold"
@@ -170,43 +285,40 @@ export function ProductForm({ product }: { product?: ProductFormValues }) {
           />
         </div>
       </div>
-      <div>
-        <Label htmlFor="fileUpload">Upload product images</Label>
-        <Input
-          id="fileUpload"
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          multiple
-          capture="environment"
-          className="mt-1.5"
-          disabled={uploading}
-          onChange={(e) => onUpload(e.target.files)}
-        />
-        <p className="mt-1 text-xs text-muted">
-          Images are resized to WebP (max 1200px / ~500 KB) and stored in the database
-          (or R2 when enabled). No redeploy needed.
-          {uploading ? " — compressing & uploading…" : ""}
-        </p>
-      </div>
-      <div>
-        <Label htmlFor="images">Image URLs (one per line)</Label>
-        <Textarea
-          id="images"
-          name="images"
-          value={imageUrls}
-          onChange={(e) => setImageUrls(e.target.value)}
-          placeholder="/api/media/… or /products/….jpg"
-          className="mt-1.5"
-        />
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="submit" className="w-full sm:w-auto" disabled={uploading}>
-          Save product
-        </Button>
-        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => router.back()}>
+
+      <ImageUploadField
+        name="images"
+        id="images"
+        multiple
+        value={imageUrls}
+        onChange={setImageUrls}
+        onUploadingChange={setUploading}
+      />
+
+      <AdminFormActions className="flex flex-col gap-2 sm:flex-row">
+        {canEdit ? (
+          <Button type="submit" className="w-full sm:w-auto" disabled={uploading || saving}>
+            {saving ? "Saving…" : "Save product"}
+          </Button>
+        ) : (
+          <p className="text-sm text-muted">View only — you cannot edit products.</p>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => router.back()}
+        >
           Cancel
         </Button>
-      </div>
+      </AdminFormActions>
     </form>
   );
+}
+
+function slugSafe(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }

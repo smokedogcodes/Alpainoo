@@ -2,44 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/admin";
-import { asD1, cuidLike, getD1, sqlNow, toDate } from "@/lib/db/d1";
+import { requirePermission } from "@/lib/auth/admin";
+import { asD1, cuidLike, getD1, sqlNow } from "@/lib/db/d1";
+import { listCategoriesDb, type CategoryRow } from "@/lib/db/categories";
 import { slugify } from "@/lib/utils";
 
-export type CategoryItem = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  sortOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-function mapCategory(row: Record<string, unknown>): CategoryItem {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    slug: String(row.slug),
-    description: row.description != null ? String(row.description) : null,
-    sortOrder: Number(row.sortOrder ?? 0),
-    createdAt: toDate(row.createdAt),
-    updatedAt: toDate(row.updatedAt),
-  };
-}
+export type CategoryItem = CategoryRow;
 
 export async function listCategories(): Promise<CategoryItem[]> {
-  const db = await getD1();
-  if (db) {
-    const res = await asD1(db)
-      .prepare(`SELECT * FROM Category ORDER BY sortOrder ASC, name ASC`)
-      .all();
-    return (res.results || []).map((r: Record<string, unknown>) => mapCategory(r));
-  }
-
-  const { getPrismaAsync } = await import("@/lib/prisma");
-  const prisma = await getPrismaAsync();
-  return prisma.category.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  return listCategoriesDb();
 }
 
 const CreateSchema = z.object({
@@ -53,7 +24,7 @@ export async function createCategory(input: {
   description?: string;
   sortOrder?: number;
 }) {
-  await requireAdmin();
+  await requirePermission("categories", "edit");
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Invalid category");
 
@@ -65,29 +36,43 @@ export async function createCategory(input: {
   if (db) {
     const id = cuidLike();
     const now = sqlNow();
-    await asD1(db)
-      .prepare(
-        `INSERT INTO Category (id, name, slug, description, sortOrder, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(id, parsed.data.name, slug, description, sortOrder, now, now)
-      .run();
+    try {
+      await asD1(db)
+        .prepare(
+          `INSERT INTO Category (id, name, slug, description, sortOrder, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(id, parsed.data.name, slug, description, sortOrder, now, now)
+        .run();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/unique|UNIQUE/i.test(msg)) throw new Error("A category with this name already exists");
+      throw new Error("Could not create category");
+    }
     revalidatePath("/admin/categories");
+    revalidatePath("/admin/products/new");
+    revalidatePath("/admin/products");
     revalidatePath("/products");
     return { id, slug };
   }
 
   const { getPrismaAsync } = await import("@/lib/prisma");
   const prisma = await getPrismaAsync();
-  const created = await prisma.category.create({
-    data: {
-      name: parsed.data.name,
-      slug,
-      description,
-      sortOrder,
-    },
-  });
-  revalidatePath("/admin/categories");
-  revalidatePath("/products");
-  return { id: created.id, slug: created.slug };
+  try {
+    const created = await prisma.category.create({
+      data: {
+        name: parsed.data.name,
+        slug,
+        description,
+        sortOrder,
+      },
+    });
+    revalidatePath("/admin/categories");
+    revalidatePath("/admin/products/new");
+    revalidatePath("/admin/products");
+    revalidatePath("/products");
+    return { id: created.id, slug: created.slug };
+  } catch {
+    throw new Error("A category with this name already exists");
+  }
 }

@@ -1,5 +1,17 @@
-import { prisma } from "@/lib/prisma";
-import { randomBytes } from "crypto";
+import {
+  attachUserToChatSession,
+  countSupportTickets,
+  createChatSession,
+  findChatSessionById,
+  type ChatSessionRow,
+} from "@/lib/db/chat";
+
+/** Web Crypto — works on Cloudflare Workers (no Node `crypto` import). */
+function randomGuestKey(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /**
  * Resume chat only via httpOnly cookie — never trust a client-supplied sessionId alone (IDOR).
@@ -7,11 +19,11 @@ import { randomBytes } from "crypto";
 export async function resolveChatSession(opts: {
   userId?: string | null;
   cookieSessionId?: string | null;
-}) {
+}): Promise<{ session: ChatSessionRow; setCookie: boolean }> {
   const cookieId = opts.cookieSessionId?.trim() || null;
 
   if (cookieId) {
-    const existing = await prisma.chatSession.findUnique({ where: { id: cookieId } });
+    const existing = await findChatSessionById(cookieId);
     if (existing) {
       if (existing.userId) {
         if (opts.userId && existing.userId === opts.userId) {
@@ -21,10 +33,7 @@ export async function resolveChatSession(opts: {
       } else {
         if (opts.userId) {
           return {
-            session: await prisma.chatSession.update({
-              where: { id: existing.id },
-              data: { userId: opts.userId },
-            }),
+            session: await attachUserToChatSession(existing.id, opts.userId),
             setCookie: false as const,
           };
         }
@@ -33,19 +42,16 @@ export async function resolveChatSession(opts: {
     }
   }
 
-  const guestKey = randomBytes(16).toString("hex");
-  const created = await prisma.chatSession.create({
-    data: {
-      userId: opts.userId || null,
-      guestKey,
-    },
+  const created = await createChatSession({
+    userId: opts.userId || null,
+    guestKey: randomGuestKey(),
   });
 
   return { session: created, setCookie: true as const };
 }
 
 export async function nextTicketNumber() {
-  const n = await prisma.supportTicket.count();
+  const n = await countSupportTickets();
   const seq = String(n + 1).padStart(5, "0");
   return `TKT-${seq}`;
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { formatINR } from "@/lib/utils";
 import { OrderStatusSelect } from "@/components/admin/order-status-select";
 import { AdminOrderActions } from "@/components/admin/admin-order-actions";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { listAdminOrders } from "@/lib/db/orders";
 
 export default async function AdminOrdersPage({
@@ -10,7 +10,7 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: { status?: string };
 }) {
-  await requireAdmin();
+  await requireScreenView("orders");
 
   const orders = await listAdminOrders({ status: searchParams.status });
 

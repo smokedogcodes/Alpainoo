@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import {
   detectIntent,
   scoreKnowledgeMatch,
-  KB_MATCH_THRESHOLD,
   looksLikeFollowUp,
+  isProductSpecificStockQuery,
+  isProductComparisonQuery,
+  resolveProductSearchQuery,
+  needsProductCatalogContext,
   OFF_TOPIC_REFUSAL,
   type ChatIntent,
 } from "@/lib/chat/intent";
@@ -20,6 +22,14 @@ import {
 } from "@/lib/chat/answer-cache";
 import { resolveChatSession, nextTicketNumber, CHAT_SESSION_COOKIE } from "@/lib/chat/session";
 import { notifyTicketCreated } from "@/lib/email/tickets";
+import {
+  createChatMessage,
+  createSupportTicket,
+  listActiveKnowledgeArticles,
+  listChatMessages,
+  listRecentOrdersForUser,
+  searchProductsForChat,
+} from "@/lib/db/chat";
 
 const bodySchema = z.object({
   message: z.string().trim().min(1).max(2000).optional(),
@@ -50,16 +60,9 @@ function jsonWithSession(
   return res;
 }
 
-async function loadConversationHistory(
-  sessionId: string
-): Promise<ChatHistoryTurn[]> {
-  const recent = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    take: HISTORY_LIMIT + 1,
-  });
-  const chronological = recent.reverse();
-  // Drop the trailing user message we just persisted — it is passed separately.
+async function loadConversationHistory(sessionId: string): Promise<ChatHistoryTurn[]> {
+  const recent = await listChatMessages(sessionId, HISTORY_LIMIT + 1);
+  const chronological = [...recent].reverse();
   const prior =
     chronological.length && chronological[chronological.length - 1]?.role === "user"
       ? chronological.slice(0, -1)
@@ -79,7 +82,51 @@ function ticketSuggestionSuffix(category: "ORDER" | "GENERAL") {
     : "\n\nWould you like me to create a support ticket? (24h TAT for general help)";
 }
 
+const PRODUCT_HELP_FALLBACK =
+  "I can help compare Alpainoo products using names or brands from our catalog — for example Mamaearth Rice Water. Tell me your skin type or what you are looking for (hydration, brightening, etc.) and I will suggest options we carry.";
+
+function productComparisonFallback(message: string): string {
+  const terms = resolveProductSearchQuery(message, "product");
+  if (terms) {
+    return `I can walk you through ${terms} and similar options we stock at Alpainoo — key specs, price, and who each product suits. Tell me your skin or hair concern (hydration, brightening, sensitive skin, etc.) and I will narrow it down.`;
+  }
+  return PRODUCT_HELP_FALLBACK;
+}
+
 export async function POST(req: Request) {
+  const reqClone = req.clone();
+  try {
+    return await handleChatPost(req);
+  } catch (err) {
+    console.error("[chat] POST failed:", err);
+    try {
+      const parsed = bodySchema.safeParse(await reqClone.json().catch(() => ({})));
+      const message = parsed.success ? parsed.data.message?.trim() : "";
+      if (message && !parsed.data?.confirmTicket) {
+        const intent = detectIntent(message);
+        if (intent === "product" || isProductComparisonQuery(message)) {
+          return NextResponse.json({
+            reply: isProductComparisonQuery(message)
+              ? productComparisonFallback(message)
+              : PRODUCT_HELP_FALLBACK,
+            source: "system",
+            intent,
+            requireLogin: false,
+            suggestTicket: false,
+          });
+        }
+      }
+    } catch {
+      // ignore secondary fallback errors
+    }
+    return NextResponse.json(
+      { error: "Chat is temporarily unavailable. Please try again." },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleChatPost(req: Request) {
   const ip = clientIp(req);
   const limited = await rateLimit(`chat:${ip}`, { limit: 12, windowMs: 60_000 });
   if (!limited.success) {
@@ -106,13 +153,8 @@ export async function POST(req: Request) {
   });
 
   if (parsed.data.confirmTicket) {
-    const recent = await prisma.chatMessage.findMany({
-      where: { sessionId: chatSession.id },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    });
+    const recent = await listChatMessages(chatSession.id, 12);
 
-    // Do not open tickets from purely off-topic threads unless the user labeled it as store support.
     const subject = (parsed.data.ticketSubject || "").toLowerCase();
     const asksAlpainooSupport =
       /\b(alpainoo|order|shipping|refund|return|product|payment|delivery|support|help|ticket)\b/i.test(
@@ -124,14 +166,12 @@ export async function POST(req: Request) {
     if (!asksAlpainooSupport && !recentOnTopic) {
       const reply =
         "I can only create support tickets for Alpainoo store issues (orders, products, shipping, policies). Please ask about your Alpainoo concern first.";
-      await prisma.chatMessage.create({
-        data: {
-          sessionId: chatSession.id,
-          role: "assistant",
-          content: reply,
-          intent: "off_topic",
-          source: "system",
-        },
+      await createChatMessage({
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: reply,
+        intent: "off_topic",
+        source: "system",
       });
       return jsonWithSession(
         {
@@ -146,7 +186,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const transcript = recent
+    const transcript = [...recent]
       .reverse()
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
@@ -157,31 +197,27 @@ export async function POST(req: Request) {
     const email = userEmail || "guest@alpainoo.local";
     const ticketNumber = await nextTicketNumber();
 
-    const ticket = await prisma.supportTicket.create({
-      data: {
-        ticketNumber,
-        userId,
-        email,
-        name: userName,
-        subject: parsed.data.ticketSubject || "Chat support request",
-        description: transcript || "Customer requested human support from chat.",
-        status: "OPEN",
-        category,
-        tatHours,
-        dueAt,
-        sessionId: chatSession.id,
-      },
+    const ticket = await createSupportTicket({
+      ticketNumber,
+      userId,
+      email,
+      name: userName,
+      subject: parsed.data.ticketSubject || "Chat support request",
+      description: transcript || "Customer requested human support from chat.",
+      status: "OPEN",
+      category,
+      tatHours,
+      dueAt,
+      sessionId: chatSession.id,
     });
 
     const assistantText = `Ticket ${ticket.ticketNumber} created. Our team aims to respond within ${tatHours} hours (by ${dueAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}).`;
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: chatSession.id,
-        role: "assistant",
-        content: assistantText,
-        intent: "general",
-        source: "system",
-      },
+    await createChatMessage({
+      sessionId: chatSession.id,
+      role: "assistant",
+      content: assistantText,
+      intent: "general",
+      source: "system",
     });
 
     void notifyTicketCreated({
@@ -219,26 +255,21 @@ export async function POST(req: Request) {
   }
 
   const intent: ChatIntent = detectIntent(message);
-  await prisma.chatMessage.create({
-    data: {
-      sessionId: chatSession.id,
-      role: "user",
-      content: message,
-      intent,
-      source: "user",
-    },
+  await createChatMessage({
+    sessionId: chatSession.id,
+    role: "user",
+    content: message,
+    intent,
+    source: "user",
   });
 
-  // Cheap pre-Gemini out-of-scope guard — no cache, no tickets.
   if (intent === "off_topic") {
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: chatSession.id,
-        role: "assistant",
-        content: OFF_TOPIC_REFUSAL,
-        intent: "off_topic",
-        source: "system",
-      },
+    await createChatMessage({
+      sessionId: chatSession.id,
+      role: "assistant",
+      content: OFF_TOPIC_REFUSAL,
+      intent: "off_topic",
+      source: "system",
     });
     return jsonWithSession(
       {
@@ -256,21 +287,19 @@ export async function POST(req: Request) {
   }
 
   const history = await loadConversationHistory(chatSession.id);
-  // Follow-ups that refer to prior turns skip KB/cache short-circuit; always pass history to Gemini.
   const preferHistory = history.length > 0 && looksLikeFollowUp(message);
+  const productStockQuery = isProductSpecificStockQuery(message);
 
   if (intent === "order") {
     if (!userId && !userEmail) {
       const reply =
         "To view order or account details, please sign in with Google. I can only share your own orders after you log in.";
-      await prisma.chatMessage.create({
-        data: {
-          sessionId: chatSession.id,
-          role: "assistant",
-          content: reply,
-          intent,
-          source: "system",
-        },
+      await createChatMessage({
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: reply,
+        intent,
+        source: "system",
       });
       return jsonWithSession(
         {
@@ -286,20 +315,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const orders = await prisma.order.findMany({
-      where: {
-        OR: [
-          ...(userId ? [{ userId }] : []),
-          ...(userEmail ? [{ email: userEmail }] : []),
-        ],
-      },
-      include: {
-        items: { include: { product: { select: { title: true, slug: true } } } },
-        shipment: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    });
+    const orders = await listRecentOrdersForUser({ userId, email: userEmail }, 8);
 
     const context =
       orders.length === 0
@@ -319,20 +335,17 @@ export async function POST(req: Request) {
       context,
       history,
     });
-    // Trust model flags: do not force tickets when canAnswer is false (e.g. soft refusals).
     const suggestTicket = Boolean(gemini.suggestTicket);
     const reply = suggestTicket
       ? `${gemini.answer}${ticketSuggestionSuffix("ORDER")}`
       : gemini.answer;
 
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: chatSession.id,
-        role: "assistant",
-        content: reply,
-        intent,
-        source: "gemini",
-      },
+    await createChatMessage({
+      sessionId: chatSession.id,
+      role: "assistant",
+      content: reply,
+      intent,
+      source: "gemini",
     });
 
     return jsonWithSession(
@@ -350,26 +363,28 @@ export async function POST(req: Request) {
     );
   }
 
-  const articles = await prisma.knowledgeArticle.findMany({ where: { active: true } });
+  const articles = await listActiveKnowledgeArticles().catch((err) => {
+    console.warn("[chat] knowledge articles load failed:", err);
+    return [] as Awaited<ReturnType<typeof listActiveKnowledgeArticles>>;
+  });
 
-  // Follow-ups that refer to prior turns should not short-circuit on a single-FAQ cache/KB hit.
-  if (!preferHistory) {
-    let best: { article: (typeof articles)[0]; score: number } | null = null;
+  if (!preferHistory && !productStockQuery) {
+    let best: { article: (typeof articles)[0]; score: number; strong: boolean } | null = null;
     for (const a of articles) {
-      const score = scoreKnowledgeMatch(message, a);
-      if (!best || score > best.score) best = { article: a, score };
+      const match = scoreKnowledgeMatch(message, a);
+      if (!best || match.score > best.score) {
+        best = { article: a, score: match.score, strong: match.strong };
+      }
     }
 
-    if (best && best.score >= KB_MATCH_THRESHOLD) {
+    if (best && best.strong) {
       const reply = best.article.answer;
-      await prisma.chatMessage.create({
-        data: {
-          sessionId: chatSession.id,
-          role: "assistant",
-          content: reply,
-          intent: "faq",
-          source: "kb",
-        },
+      await createChatMessage({
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: reply,
+        intent: "faq",
+        source: "kb",
       });
       return jsonWithSession(
         {
@@ -386,17 +401,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const cached = await findCachedAnswer(message);
-    if (cached) {
+    let cached: Awaited<ReturnType<typeof findCachedAnswer>> = null;
+    try {
+      cached = await findCachedAnswer(message);
+    } catch (cacheErr) {
+      console.warn("[chat] answer cache lookup failed:", cacheErr);
+    }
+    if (
+      cached &&
+      !(isProductComparisonQuery(message) && /\bin stock\b/i.test(cached.answer))
+    ) {
       await recordCacheHit(cached.id);
-      await prisma.chatMessage.create({
-        data: {
-          sessionId: chatSession.id,
-          role: "assistant",
-          content: cached.answer,
-          intent: cached.intent || intent,
-          source: "cache",
-        },
+      await createChatMessage({
+        sessionId: chatSession.id,
+        role: "assistant",
+        content: cached.answer,
+        intent: cached.intent || intent,
+        source: "cache",
       });
       return jsonWithSession(
         {
@@ -414,48 +435,65 @@ export async function POST(req: Request) {
   }
 
   let context = "";
-  if (intent === "product" || intent === "general" || intent === "faq") {
-    const products = await prisma.product.findMany({
-      where: { isHidden: false },
-      orderBy: { reviewCount: "desc" },
-      take: 12,
-      select: {
-        title: true,
-        slug: true,
-        brand: true,
-        category: true,
-        sellingPrice: true,
-        stock: true,
-        description: true,
-      },
-    });
+  if (needsProductCatalogContext(message, intent)) {
+    const productQuery = resolveProductSearchQuery(message, intent);
+    let products: Awaited<ReturnType<typeof searchProductsForChat>> = [];
+    try {
+      products = await searchProductsForChat(productQuery, 12);
+    } catch (searchErr) {
+      console.warn("[chat] product search failed:", searchErr);
+    }
     context = products
       .map(
         (p) =>
-          `${p.title} (${p.brand}, ${p.category}): INR ${p.sellingPrice}, stock=${p.stock}, slug=${p.slug}. ${p.description.slice(0, 120)}`
+          `${p.title} (${p.brand}, ${p.category}): INR ${p.sellingPrice}, stock=${p.stock}, slug=${p.slug}. ${(p.description ?? "").slice(0, 120)}`
       )
       .join("\n");
 
     if (articles.length) {
+      const faqArticles = productStockQuery
+        ? articles.filter((a) => a.slug !== "stock-availability")
+        : articles;
       context +=
         "\n\nFAQ snippets:\n" +
-        articles
+        faqArticles
           .slice(0, 6)
           .map((a) => `Q: ${a.question}\nA: ${a.answer}`)
           .join("\n\n");
     }
   }
 
-  const gemini = await askGemini({
-    userMessage: message,
-    intent,
-    context,
-    history,
-  });
+  let gemini: Awaited<ReturnType<typeof askGemini>>;
+  try {
+    gemini = await askGemini({
+      userMessage: message,
+      intent,
+      context,
+      history,
+    });
+  } catch (geminiErr) {
+    console.warn("[chat] askGemini threw:", geminiErr);
+    gemini = {
+      answer:
+        "I am having trouble reaching the AI service right now. Would you like to create a support ticket?",
+      canAnswer: false,
+      suggestTicket: true,
+    };
+  }
   const suggestTicket = Boolean(gemini.suggestTicket);
-  const reply = suggestTicket
+  let reply = suggestTicket
     ? `${gemini.answer}${ticketSuggestionSuffix("GENERAL")}`
     : gemini.answer;
+
+  const productComparison = isProductComparisonQuery(message);
+  if (
+    (!gemini.canAnswer || /trouble reaching the AI service/i.test(gemini.answer)) &&
+    (intent === "product" || productComparison)
+  ) {
+    reply = productComparison ? productComparisonFallback(message) : PRODUCT_HELP_FALLBACK;
+  } else if (!gemini.canAnswer && !suggestTicket && intent === "product") {
+    reply = PRODUCT_HELP_FALLBACK;
+  }
 
   if (
     shouldCacheAnswer({
@@ -474,14 +512,12 @@ export async function POST(req: Request) {
     });
   }
 
-  await prisma.chatMessage.create({
-    data: {
-      sessionId: chatSession.id,
-      role: "assistant",
-      content: reply,
-      intent,
-      source: "gemini",
-    },
+  await createChatMessage({
+    sessionId: chatSession.id,
+    role: "assistant",
+    content: reply,
+    intent,
+    source: "gemini",
   });
 
   return jsonWithSession(

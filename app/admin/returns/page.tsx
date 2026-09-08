@@ -1,7 +1,9 @@
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { listReturns } from "@/lib/actions/returns";
 import { ReturnAdminActions } from "@/components/admin/return-admin-actions";
 
 export default async function AdminReturnsPage() {
+  await requireScreenView("returns");
   const returns = await listReturns(100);
 
   return (

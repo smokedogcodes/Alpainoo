@@ -159,9 +159,21 @@ export function SupportChat({ isLoggedIn }: { isLoggedIn: boolean }) {
               : "bottom-[calc(6rem+env(safe-area-inset-bottom))]",
           )}
         >
-          <div className="border-b border-border/50 bg-sage px-4 py-3 text-white">
-            <p className="font-display text-lg">Alpainoo Support</p>
-            <p className="text-xs text-white/80">FAQs · products · your orders</p>
+          <div className="flex items-start gap-3 border-b border-border/50 bg-sage px-4 py-3 text-white">
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-lg !text-white">Chatbot</p>
+              <p className="text-xs text-white/80">
+                FAQs · products · your orders and much more
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="shrink-0 rounded-md p-1 text-white/90 transition hover:bg-white/15 hover:text-white"
+              aria-label="Close chat"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">

@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
+import { toast } from "sonner";
 import { approveCancelRequest, rejectCancelRequest, syncShipmentTracking } from "@/lib/actions/admin";
 import { refundOrder } from "@/lib/actions/refunds";
 import { Button } from "@/components/ui/button";
+import { Can } from "@/components/admin/admin-permissions";
 
 export function AdminOrderActions({
   orderId,
@@ -21,24 +23,21 @@ export function AdminOrderActions({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   function run(action: () => Promise<unknown>, okMsg: string) {
-    setError(null);
-    setMessage(null);
     startTransition(async () => {
       try {
         await action();
-        setMessage(okMsg);
+        toast.success(okMsg);
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Action failed");
+        toast.error(e instanceof Error ? e.message : "Action failed");
       }
     });
   }
 
   return (
+    <Can screen="orders" action="edit">
     <div className="mt-3 space-y-2 border-t border-border pt-3">
       {cancelRequested && (
         <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-950">
@@ -49,7 +48,9 @@ export function AdminOrderActions({
               type="button"
               size="sm"
               disabled={pending}
-              onClick={() => run(() => approveCancelRequest(orderId), "Cancelled")}
+              onClick={() =>
+                run(() => approveCancelRequest(orderId), "Cancel approved — order cancelled")
+              }
             >
               Approve cancel
             </Button>
@@ -58,7 +59,7 @@ export function AdminOrderActions({
               size="sm"
               variant="outline"
               disabled={pending}
-              onClick={() => run(() => rejectCancelRequest(orderId), "Request rejected")}
+              onClick={() => run(() => rejectCancelRequest(orderId), "Cancel request rejected")}
             >
               Reject
             </Button>
@@ -74,7 +75,7 @@ export function AdminOrderActions({
             disabled={pending}
             onClick={() => {
               if (!window.confirm("Refund this paid order via Razorpay?")) return;
-              run(() => refundOrder(orderId), "Refunded");
+              run(() => refundOrder(orderId), "Refund processed successfully");
             }}
           >
             Refund
@@ -86,14 +87,13 @@ export function AdminOrderActions({
             size="sm"
             variant="outline"
             disabled={pending}
-            onClick={() => run(() => syncShipmentTracking(orderId), "Tracking refreshed")}
+            onClick={() => run(() => syncShipmentTracking(orderId), "Tracking synced")}
           >
             Refresh tracking
           </Button>
         )}
       </div>
-      {message && <p className="text-xs text-sage">{message}</p>}
-      {error && <p className="text-xs text-red-700">{error}</p>}
     </div>
+    </Can>
   );
 }

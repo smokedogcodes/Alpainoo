@@ -1,33 +1,39 @@
 import { notFound } from "next/navigation";
 import { ProductForm } from "@/components/admin/product-form";
 import { VariantManager } from "@/components/admin/variant-manager";
-import { listVariants } from "@/lib/actions/variants";
+import { ensureDefaultCategoriesDb } from "@/lib/db/categories";
 import { getProductById } from "@/lib/db/products";
+import { listVariantsForProduct } from "@/lib/db/variants";
 import { asD1, getD1, toDate } from "@/lib/db/d1";
+import { requireScreenView } from "@/lib/auth/require-screen";
 
 export default async function EditProductPage({ params }: { params: { id: string } }) {
+  await requireScreenView("products");
   const product = await getProductById(params.id);
   if (!product) notFound();
 
-  const variants = await listVariants(product.id);
+  const [variants, categories] = await Promise.all([
+    listVariantsForProduct(product.id),
+    ensureDefaultCategoriesDb().catch(() => []),
+  ]);
 
   let stockLogs: { id: string; change: number; note: string | null; createdAt: Date }[] = [];
-  const db = await getD1();
-  if (db) {
-    const res = await asD1(db)
-      .prepare(
-        `SELECT id, change, note, createdAt FROM StockLog WHERE productId = ? ORDER BY createdAt DESC LIMIT 10`
-      )
-      .bind(product.id)
-      .all();
-    stockLogs = ((res.results || []) as Record<string, unknown>[]).map((r) => ({
-      id: String(r.id),
-      change: Number(r.change),
-      note: r.note != null ? String(r.note) : null,
-      createdAt: toDate(r.createdAt),
-    }));
-  } else {
-    try {
+  try {
+    const db = await getD1();
+    if (db) {
+      const res = await asD1(db)
+        .prepare(
+          `SELECT id, change, note, createdAt FROM StockLog WHERE productId = ? ORDER BY createdAt DESC LIMIT 10`
+        )
+        .bind(product.id)
+        .all();
+      stockLogs = ((res.results || []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        change: Number(r.change),
+        note: r.note != null ? String(r.note) : null,
+        createdAt: toDate(r.createdAt),
+      }));
+    } else {
       const { getPrismaAsync } = await import("@/lib/prisma");
       const prisma = await getPrismaAsync();
       stockLogs = await prisma.stockLog.findMany({
@@ -35,20 +41,23 @@ export default async function EditProductPage({ params }: { params: { id: string
         orderBy: { createdAt: "desc" },
         take: 10,
       });
-    } catch {
-      stockLogs = [];
     }
+  } catch (err) {
+    console.error("[admin/products] stock logs failed:", err);
+    stockLogs = [];
   }
 
   return (
     <div className="space-y-8">
       <h1 className="font-display text-3xl">Edit product</h1>
       <ProductForm
+        categories={categories.map((c) => ({ id: c.id, name: c.name, slug: c.slug }))}
         product={{
           id: product.id,
           title: product.title,
           brand: product.brand,
           category: product.category,
+          categoryId: product.categoryId,
           description: product.description,
           volume: product.volume,
           mrp: product.mrp,

@@ -47,6 +47,13 @@ export function getPrisma(): PrismaClient {
       );
     }
   } catch (err) {
+    // Do not swallow the intentional disable — only ignore context lookup failures.
+    if (
+      err instanceof Error &&
+      err.message.includes("Prisma is disabled on Cloudflare Workers")
+    ) {
+      throw err;
+    }
     if (looksLikeCloudflareWorker()) throw err;
   }
   return createNodePrisma();

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { asD1, getD1, sqlNow } from "@/lib/db/d1";
+import { findOrderById } from "@/lib/db/orders";
 
 const CancelSchema = z.object({
   orderId: z.string().min(1),
@@ -18,17 +19,15 @@ async function assertOrderOwner(orderId: string) {
     throw new Error("Please sign in");
   }
 
-  const order = await prisma.order.findFirst({
-    where: {
-      id: orderId,
-      OR: [
-        ...(session.user.id ? [{ userId: session.user.id }] : []),
-        ...(session.user.email ? [{ email: session.user.email }] : []),
-      ],
-    },
-  });
-
+  const order = await findOrderById(orderId);
   if (!order) throw new Error("Order not found");
+
+  const ownsById = session.user.id && order.userId === session.user.id;
+  const ownsByEmail =
+    session.user.email &&
+    order.email.toLowerCase() === session.user.email.toLowerCase();
+  if (!ownsById && !ownsByEmail) throw new Error("Order not found");
+
   return order;
 }
 
@@ -48,15 +47,37 @@ export async function requestOrderCancel(orderId: string, reason: string) {
     throw new Error("This order can no longer be cancelled online");
   }
 
-  await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      previousOrderStatus: order.orderStatus,
-      orderStatus: "CANCEL_REQUESTED",
-      cancelRequestedAt: new Date(),
-      cancelReason: parsed.data.reason,
-    },
-  });
+  const db = await getD1();
+  if (db) {
+    const now = sqlNow();
+    await asD1(db)
+      .prepare(
+        `UPDATE "Order"
+         SET previousOrderStatus = ?, orderStatus = ?, cancelRequestedAt = ?, cancelReason = ?, updatedAt = ?
+         WHERE id = ?`
+      )
+      .bind(
+        order.orderStatus,
+        "CANCEL_REQUESTED",
+        now,
+        parsed.data.reason,
+        now,
+        order.id
+      )
+      .run();
+  } else {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        previousOrderStatus: order.orderStatus,
+        orderStatus: "CANCEL_REQUESTED",
+        cancelRequestedAt: new Date(),
+        cancelReason: parsed.data.reason,
+      },
+    });
+  }
 
   void import("@/lib/email/orders")
     .then(({ notifyCancelRequested }) =>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { TicketAdminActions } from "@/components/admin/ticket-actions";
 import { getAdminTicket } from "@/lib/db/tickets";
 
@@ -9,7 +9,7 @@ export default async function AdminTicketDetailPage({
 }: {
   params: { id: string };
 }) {
-  await requireAdmin();
+  await requireScreenView("tickets");
 
   const ticket = await getAdminTicket(params.id);
   if (!ticket) notFound();

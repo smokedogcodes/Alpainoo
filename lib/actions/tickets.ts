@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/admin";
-import { updateTicketFields } from "@/lib/db/tickets";
+import { requirePermission } from "@/lib/auth/admin";
+import { getTicketById, updateTicketFields } from "@/lib/db/tickets";
+import { notifyTicketCustomerUpdate } from "@/lib/email/tickets";
 import {
   deleteKnowledgeArticleDb,
   toggleKnowledgeArticleDb,
@@ -10,21 +11,58 @@ import {
 } from "@/lib/db/knowledge";
 
 export async function updateTicketStatus(id: string, status: string) {
-  await requireAdmin();
+  await requirePermission("tickets", "edit");
   const allowed = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
   if (!allowed.includes(status)) throw new Error("Invalid status");
+
+  const ticket = await getTicketById(id);
+  if (!ticket) throw new Error("Ticket not found");
+
   await updateTicketFields(id, { status });
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${id}`);
+  revalidatePath("/account");
+
+  if (status !== ticket.status) {
+    void notifyTicketCustomerUpdate({
+      ticketNumber: ticket.ticketNumber,
+      email: ticket.email,
+      name: ticket.name,
+      subject: ticket.subject,
+      status,
+      adminReply: ticket.adminReply,
+      kind: "status",
+    }).catch((err) => console.warn("[ticket] customer status email failed:", err));
+  }
 }
 
 export async function replyToTicket(id: string, adminReply: string) {
-  await requireAdmin();
+  await requirePermission("tickets", "edit");
   const reply = adminReply.trim();
   if (!reply) throw new Error("Reply required");
-  await updateTicketFields(id, { adminReply: reply, status: "IN_PROGRESS" });
+
+  const ticket = await getTicketById(id);
+  if (!ticket) throw new Error("Ticket not found");
+
+  const nextStatus =
+    ticket.status === "RESOLVED" || ticket.status === "CLOSED"
+      ? ticket.status
+      : "IN_PROGRESS";
+
+  await updateTicketFields(id, { adminReply: reply, status: nextStatus });
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${id}`);
+  revalidatePath("/account");
+
+  void notifyTicketCustomerUpdate({
+    ticketNumber: ticket.ticketNumber,
+    email: ticket.email,
+    name: ticket.name,
+    subject: ticket.subject,
+    status: nextStatus,
+    adminReply: reply,
+    kind: "reply",
+  }).catch((err) => console.warn("[ticket] customer reply email failed:", err));
 }
 
 export async function upsertKnowledgeArticle(input: {
@@ -37,7 +75,7 @@ export async function upsertKnowledgeArticle(input: {
   category: string;
   active: boolean;
 }) {
-  await requireAdmin();
+  await requirePermission("knowledge", "edit");
   const keywordsJson = JSON.stringify(
     input.keywords
       .split(",")
@@ -59,13 +97,13 @@ export async function upsertKnowledgeArticle(input: {
 }
 
 export async function deleteKnowledgeArticle(id: string) {
-  await requireAdmin();
+  await requirePermission("knowledge", "delete");
   await deleteKnowledgeArticleDb(id);
   revalidatePath("/admin/knowledge");
 }
 
 export async function toggleKnowledgeArticle(id: string, active: boolean) {
-  await requireAdmin();
+  await requirePermission("knowledge", "edit");
   await toggleKnowledgeArticleDb(id, active);
   revalidatePath("/admin/knowledge");
 }

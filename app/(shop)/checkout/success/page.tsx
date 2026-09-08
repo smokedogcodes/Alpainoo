@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { ReceiptPrinterExperience } from "@/components/checkout/receipt-printer-experience";
-import { requireUser } from "@/lib/auth/require-user";
-import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { findOrderById } from "@/lib/db/orders";
 import { verifyOrderAccess } from "@/lib/security/order-access";
 import { opaqueHref } from "@/lib/security/opaque-routes";
 
@@ -15,27 +15,23 @@ export default async function CheckoutSuccessPage({
     redirect(opaqueHref("/orders"));
   }
 
-  const user = await requireUser({ callbackPath: opaqueHref("/checkout/success") });
   const access = verifyOrderAccess(searchParams.t);
-  if (!access || access.userId !== user.id) {
+  if (!access) {
     notFound();
   }
 
-  const owned = await prisma.order.findFirst({
-    where: {
-      id: access.orderId,
-      orderNumber: access.orderNumber,
-      OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email }] : [])],
-    },
-    include: {
-      items: {
-        include: { product: { select: { title: true } } },
-        orderBy: { id: "asc" },
-      },
-    },
-  });
+  const session = await auth();
+  // Signed-in users must match the token; guests rely on the signed token alone.
+  if (session?.user?.id && access.userId !== session.user.id) {
+    notFound();
+  }
 
-  if (!owned) {
+  const owned = await findOrderById(access.orderId);
+  if (
+    !owned ||
+    owned.orderNumber !== access.orderNumber ||
+    (owned.userId && owned.userId !== access.userId)
+  ) {
     notFound();
   }
 

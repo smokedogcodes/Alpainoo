@@ -51,11 +51,14 @@ function extractJson(text: string): GeminiChatResult | null {
 function defaultModelCandidates() {
   const preferred = process.env.GEMINI_MODEL?.trim();
   const defaults = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash",
     "gemini-3.6-flash",
-    "gemini-3.7-flash",
     "gemini-3-flash-preview",
   ];
   if (preferred) return [preferred, ...defaults.filter((m) => m !== preferred)];
@@ -108,17 +111,49 @@ function formatHistory(history: ChatHistoryTurn[] | undefined): string {
     .join("\n");
 }
 
+const GREETING_RE =
+  /^(hi|hello|hey|hii+|helo|namaste|good\s+(morning|afternoon|evening))[\s!.]*$/i;
+
 export async function askGemini(input: {
   userMessage: string;
   intent: string;
   context: string;
   history?: ChatHistoryTurn[];
 }): Promise<GeminiChatResult> {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) {
+  try {
+    return await askGeminiInner(input);
+  } catch (err) {
+    console.error("[gemini] unexpected error:", err);
     return {
       answer:
-        "The AI assistant is not configured yet. Please create a support ticket and our team will help you.",
+        "I am having trouble reaching the AI service right now. Would you like to create a support ticket?",
+      canAnswer: false,
+      suggestTicket: true,
+    };
+  }
+}
+
+async function askGeminiInner(input: {
+  userMessage: string;
+  intent: string;
+  context: string;
+  history?: ChatHistoryTurn[];
+}): Promise<GeminiChatResult> {
+  const key =
+    process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+  if (!key) {
+    const trimmed = input.userMessage.trim();
+    if (GREETING_RE.test(trimmed)) {
+      return {
+        answer:
+          "Hi! I'm Alpainoo support. Ask about shipping, products, or policies. For your orders, please sign in first.",
+        canAnswer: true,
+        suggestTicket: false,
+      };
+    }
+    return {
+      answer:
+        "Ask me something specific — shipping, returns, payment methods, or a product name — and I'll pull from our FAQs. For anything else, I can create a support ticket and our team will help.",
       canAnswer: false,
       suggestTicket: true,
     };

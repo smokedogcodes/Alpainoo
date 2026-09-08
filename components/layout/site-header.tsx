@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Heart, LayoutDashboard, LogOut, Menu, Package, ShoppingBag, User } from "lucide-react";
+import { Heart, LayoutDashboard, LogOut, MapPin, Menu, Package, ShoppingBag, User } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,12 +20,14 @@ import { HeaderSearch } from "@/components/layout/header-search";
 import { useDismissOnRouteChange } from "@/hooks/use-dismiss-on-route-change";
 import { opaqueHref } from "@/lib/security/opaque-routes";
 import { useRouter } from "next/navigation";
+import { isStaffLikeRole } from "@/lib/auth/permissions";
 
 const nav = [
   { href: opaqueHref("/sale"), label: "Sale" },
   { href: opaqueHref("/products?category=Hair+Serum"), label: "Hair and Skin" },
   { href: opaqueHref("/products?category=Perfume"), label: "Fragrances" },
   { href: opaqueHref("/products"), label: "Shop" },
+  { href: opaqueHref("/collections"), label: "Collections" },
   { href: opaqueHref("/blog"), label: "Blog" },
   { href: opaqueHref("/about"), label: "About" },
 ];
@@ -82,7 +84,8 @@ export function SiteHeader({
 
   const user = session?.user;
   const signedIn = status === "authenticated" && Boolean(user?.email || userEmail);
-  const isAdmin = userRole === "ADMIN" || user?.role === "ADMIN";
+  const isAdmin =
+    isStaffLikeRole(userRole) || isStaffLikeRole(user?.role);
   const displayName =
     user?.name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
@@ -106,6 +109,12 @@ export function SiteHeader({
     setAccountOpen(false);
     setNavOpen(false);
     router.push(opaqueHref("/orders"));
+  }
+
+  function goAccount() {
+    setAccountOpen(false);
+    setNavOpen(false);
+    router.push("/account");
   }
 
   function goWishlist() {
@@ -159,8 +168,16 @@ export function SiteHeader({
                       <p className="px-3 text-xs text-muted">{user?.email || userEmail}</p>
                       <button
                         type="button"
-                        onClick={goOrders}
+                        onClick={goAccount}
                         className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
+                      >
+                        <MapPin className="h-4 w-4" />
+                        Account & addresses
+                      </button>
+                      <button
+                        type="button"
+                        onClick={goOrders}
+                        className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-off-white hover:text-sage"
                       >
                         <Package className="h-4 w-4" />
                         My Orders
@@ -286,6 +303,15 @@ export function SiteHeader({
                             type="button"
                             role="menuitem"
                             className="mt-3 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
+                            onClick={goAccount}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            Account & addresses
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="mt-2 flex min-h-[40px] w-full items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-off-white"
                             onClick={goOrders}
                           >
                             <Package className="h-4 w-4" />

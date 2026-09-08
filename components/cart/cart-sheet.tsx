@@ -63,7 +63,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
           ) : (
             <ul className="divide-y divide-border">
               {items.map((item) => (
-                <li key={item.productId} className="flex gap-3 py-4">
+                <li key={item.lineId} className="flex gap-3 py-4">
                   <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-blush-soft">
                     <ProductImage src={item.image} alt={item.title} fill sizes="80px" />
                   </div>
@@ -79,7 +79,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                       </SheetClose>
                       <button
                         type="button"
-                        onClick={() => removeItem(item.productId)}
+                        onClick={() => removeItem(item.lineId)}
                         className="min-h-[44px] min-w-[44px] text-muted hover:text-price-sale"
                         aria-label="Remove"
                       >
@@ -91,7 +91,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                         <button
                           type="button"
                           className="flex h-10 w-10 items-center justify-center"
-                          onClick={() => updateQty(item.productId, item.quantity - 1)}
+                          onClick={() => updateQty(item.lineId, item.quantity - 1)}
                         >
                           <Minus className="h-3 w-3" />
                         </button>
@@ -99,7 +99,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                         <button
                           type="button"
                           className="flex h-10 w-10 items-center justify-center"
-                          onClick={() => updateQty(item.productId, item.quantity + 1)}
+                          onClick={() => updateQty(item.lineId, item.quantity + 1)}
                         >
                           <Plus className="h-3 w-3" />
                         </button>
@@ -122,7 +122,9 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
               <Link href={opaqueHref("/checkout")}>Proceed to Checkout</Link>
             </Button>
           </SheetClose>
-          <p className="text-center text-xs text-muted">Shipping & taxes calculated at checkout.</p>
+          <p className="text-center text-xs text-muted">
+            Free shipping on orders ₹499+. Coupons & delivery ETA at checkout.
+          </p>
         </div>
       </SheetContent>
     </Sheet>

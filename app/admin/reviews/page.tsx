@@ -1,7 +1,9 @@
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { listPendingReviews } from "@/lib/actions/reviews";
 import { ApproveReviewButton } from "@/components/admin/approve-review-button";
 
 export default async function AdminReviewsPage() {
+  await requireScreenView("reviews");
   const reviews = await listPendingReviews(100);
 
   return (

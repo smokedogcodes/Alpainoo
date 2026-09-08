@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { listAdminTickets } from "@/lib/db/tickets";
 
 export default async function AdminTicketsPage({
@@ -7,7 +7,7 @@ export default async function AdminTicketsPage({
 }: {
   searchParams: { status?: string };
 }) {
-  await requireAdmin();
+  await requireScreenView("tickets");
 
   const tickets = await listAdminTickets({ status: searchParams.status });
   const statuses = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];

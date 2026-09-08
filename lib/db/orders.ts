@@ -8,12 +8,18 @@ export type OrderWithItems = Order & {
 };
 
 function mapOrder(row: Record<string, unknown>): Order {
+  const totalAmount = Number(row.totalAmount);
   return {
     id: String(row.id),
     orderNumber: String(row.orderNumber),
     userId: row.userId != null ? String(row.userId) : null,
     email: String(row.email),
-    totalAmount: Number(row.totalAmount),
+    totalAmount,
+    subtotalAmount:
+      row.subtotalAmount != null ? Number(row.subtotalAmount) : totalAmount,
+    discountAmount: Number(row.discountAmount ?? 0),
+    shippingAmount: Number(row.shippingAmount ?? 0),
+    couponCode: row.couponCode != null ? String(row.couponCode) : null,
     paymentStatus: String(row.paymentStatus),
     orderStatus: String(row.orderStatus),
     razorpayOrderId:
@@ -36,6 +42,7 @@ function mapItem(row: Record<string, unknown>): OrderItem {
     id: String(row.id),
     orderId: String(row.orderId),
     productId: String(row.productId),
+    variantId: row.variantId != null ? String(row.variantId) : null,
     quantity: Number(row.quantity),
     price: Number(row.price),
   };
@@ -101,10 +108,19 @@ export async function createOrderBundle(input: {
   userId: string;
   email: string;
   totalAmount: number;
+  subtotalAmount?: number;
+  discountAmount?: number;
+  shippingAmount?: number;
+  couponCode?: string | null;
   razorpayOrderId: string | null;
   shippingAddress: string;
-  lines: Array<{ productId: string; quantity: number; price: number }>;
+  lines: Array<{ productId: string; quantity: number; price: number; variantId?: string | null }>;
 }): Promise<OrderWithItems> {
+  const subtotalAmount = input.subtotalAmount ?? input.totalAmount;
+  const discountAmount = input.discountAmount ?? 0;
+  const shippingAmount = input.shippingAmount ?? 0;
+  const couponCode = input.couponCode?.trim() || null;
+
   const db = await getD1();
   if (!db) {
     const { getPrismaAsync } = await import("@/lib/prisma");
@@ -115,6 +131,10 @@ export async function createOrderBundle(input: {
         userId: input.userId,
         email: input.email,
         totalAmount: input.totalAmount,
+        subtotalAmount,
+        discountAmount,
+        shippingAmount,
+        couponCode,
         razorpayOrderId: input.razorpayOrderId,
         shippingAddress: input.shippingAddress,
         paymentStatus: "PENDING",
@@ -124,6 +144,7 @@ export async function createOrderBundle(input: {
             productId: l.productId,
             quantity: l.quantity,
             price: l.price,
+            variantId: l.variantId || null,
           })),
         },
       },
@@ -134,31 +155,72 @@ export async function createOrderBundle(input: {
   const d1 = asD1(db);
   const id = cuidLike();
   const now = sqlNow();
-  await d1
-    .prepare(
-      `INSERT INTO "Order" (id, orderNumber, userId, email, totalAmount, paymentStatus, orderStatus, razorpayOrderId, shippingAddress, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, 'PENDING', 'PENDING', ?, ?, ?, ?)`
-    )
-    .bind(
-      id,
-      input.orderNumber,
-      input.userId,
-      input.email,
-      input.totalAmount,
-      input.razorpayOrderId,
-      input.shippingAddress,
-      now,
-      now
-    )
-    .run();
-
-  for (const line of input.lines) {
+  try {
     await d1
       .prepare(
-        `INSERT INTO OrderItem (id, orderId, productId, quantity, price) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO "Order" (id, orderNumber, userId, email, totalAmount, subtotalAmount, discountAmount, shippingAmount, couponCode, paymentStatus, orderStatus, razorpayOrderId, shippingAddress, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'PENDING', ?, ?, ?, ?)`
       )
-      .bind(cuidLike(), id, line.productId, line.quantity, line.price)
+      .bind(
+        id,
+        input.orderNumber,
+        input.userId,
+        input.email,
+        input.totalAmount,
+        subtotalAmount,
+        discountAmount,
+        shippingAmount,
+        couponCode,
+        input.razorpayOrderId,
+        input.shippingAddress,
+        now,
+        now
+      )
       .run();
+  } catch {
+    // Older D1 without commerce columns
+    await d1
+      .prepare(
+        `INSERT INTO "Order" (id, orderNumber, userId, email, totalAmount, paymentStatus, orderStatus, razorpayOrderId, shippingAddress, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, 'PENDING', 'PENDING', ?, ?, ?, ?)`
+      )
+      .bind(
+        id,
+        input.orderNumber,
+        input.userId,
+        input.email,
+        input.totalAmount,
+        input.razorpayOrderId,
+        input.shippingAddress,
+        now,
+        now
+      )
+      .run();
+  }
+
+  for (const line of input.lines) {
+    try {
+      await d1
+        .prepare(
+          `INSERT INTO OrderItem (id, orderId, productId, variantId, quantity, price) VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          cuidLike(),
+          id,
+          line.productId,
+          line.variantId || null,
+          line.quantity,
+          line.price
+        )
+        .run();
+    } catch {
+      await d1
+        .prepare(
+          `INSERT INTO OrderItem (id, orderId, productId, quantity, price) VALUES (?, ?, ?, ?, ?)`
+        )
+        .bind(cuidLike(), id, line.productId, line.quantity, line.price)
+        .run();
+    }
   }
 
   const bundle = await loadOrderBundle(db, id);
@@ -311,6 +373,18 @@ export async function fulfillPaidOrderDb(
         include: { items: { include: { product: true } }, shipment: true },
       });
 
+      if (paid.couponCode) {
+        const coupon = await tx.coupon.findFirst({
+          where: { code: { equals: paid.couponCode } },
+        });
+        if (coupon) {
+          await tx.coupon.update({
+            where: { id: coupon.id },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
+      }
+
       return { order: paid, alreadyPaid: false as const };
     });
     return updated;
@@ -320,6 +394,17 @@ export async function fulfillPaidOrderDb(
   const now = sqlNow();
 
   for (const item of existing.items) {
+    if (item.variantId) {
+      const updated = await d1
+        .prepare(
+          `UPDATE ProductVariant SET stock = stock - ? WHERE id = ? AND productId = ? AND stock >= ?`
+        )
+        .bind(item.quantity, item.variantId, item.productId, item.quantity)
+        .run();
+      if (!updated.meta?.changes) {
+        throw new Error(`Insufficient stock for ${item.product.title}`);
+      }
+    }
     const updated = await d1
       .prepare(
         `UPDATE Product SET stock = stock - ?, updatedAt = ? WHERE id = ? AND stock >= ?`
@@ -349,6 +434,15 @@ export async function fulfillPaidOrderDb(
     )
     .bind(razorpayPaymentId, now, orderId)
     .run();
+
+  if (existing.couponCode) {
+    try {
+      const { redeemCoupon } = await import("@/lib/coupons");
+      await redeemCoupon(existing.couponCode);
+    } catch (err) {
+      console.error("[coupon] redeem failed:", err);
+    }
+  }
 
   const order = await loadOrderBundle(db, orderId);
   if (!order) throw new Error("Order missing after fulfill");

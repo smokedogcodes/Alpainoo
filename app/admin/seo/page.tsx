@@ -1,13 +1,14 @@
 import { getSiteSettings } from "@/lib/gst/invoice";
 import { saveSiteSettingsAction } from "@/lib/actions/site-settings";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
+import { AdminForm, AdminFormActions } from "@/components/admin/admin-form";
+import { FieldLabel } from "@/components/admin/field-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 export default async function AdminSeoPage() {
-  await requireAdmin();
+  await requireScreenView("seo");
   const settings = await getSiteSettings();
 
   return (
@@ -19,12 +20,14 @@ export default async function AdminSeoPage() {
         </p>
       </div>
 
-      <form
+      <AdminForm
         action={saveSiteSettingsAction}
+        successMessage="Settings saved successfully"
+        errorMessage="Could not save settings"
         className="max-w-xl space-y-4 rounded-lg border border-border bg-white p-4"
       >
         <div>
-          <Label htmlFor="businessName">Business name</Label>
+          <FieldLabel htmlFor="businessName">Business name</FieldLabel>
           <Input
             id="businessName"
             name="businessName"
@@ -33,11 +36,11 @@ export default async function AdminSeoPage() {
           />
         </div>
         <div>
-          <Label htmlFor="gstin">GSTIN</Label>
+          <FieldLabel htmlFor="gstin">GSTIN</FieldLabel>
           <Input id="gstin" name="gstin" defaultValue={settings.gstin || ""} className="mt-1.5" />
         </div>
         <div>
-          <Label htmlFor="businessAddress">Business address</Label>
+          <FieldLabel htmlFor="businessAddress">Business address</FieldLabel>
           <Textarea
             id="businessAddress"
             name="businessAddress"
@@ -46,7 +49,7 @@ export default async function AdminSeoPage() {
           />
         </div>
         <div>
-          <Label htmlFor="gaMeasurementId">GA measurement ID</Label>
+          <FieldLabel htmlFor="gaMeasurementId">GA measurement ID</FieldLabel>
           <Input
             id="gaMeasurementId"
             name="gaMeasurementId"
@@ -56,7 +59,7 @@ export default async function AdminSeoPage() {
           />
         </div>
         <div>
-          <Label htmlFor="metaPixelId">Meta Pixel ID</Label>
+          <FieldLabel htmlFor="metaPixelId">Meta Pixel ID</FieldLabel>
           <Input
             id="metaPixelId"
             name="metaPixelId"
@@ -65,7 +68,7 @@ export default async function AdminSeoPage() {
           />
         </div>
         <div>
-          <Label htmlFor="lowStockDefault">Default low-stock threshold</Label>
+          <FieldLabel htmlFor="lowStockDefault">Default low-stock threshold</FieldLabel>
           <Input
             id="lowStockDefault"
             name="lowStockDefault"
@@ -75,8 +78,10 @@ export default async function AdminSeoPage() {
             className="mt-1.5"
           />
         </div>
-        <Button type="submit">Save settings</Button>
-      </form>
+        <AdminFormActions>
+          <Button type="submit">Save settings</Button>
+        </AdminFormActions>
+      </AdminForm>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requirePermission } from "@/lib/auth/admin";
 import { saveSiteSettings } from "@/lib/gst/invoice";
 
 const Schema = z.object({
@@ -15,7 +15,7 @@ const Schema = z.object({
 });
 
 export async function saveSiteSettingsAction(formData: FormData) {
-  await requireAdmin();
+  await requirePermission("seo", "edit");
   const raw = {
     gstin: String(formData.get("gstin") || "").trim() || null,
     businessName: String(formData.get("businessName") || "").trim() || null,

@@ -3,7 +3,7 @@
 Stack: **OpenNext** → Cloudflare Workers, **D1** (SQLite) for data. Product images: **D1 BLOB** by default (compressed admin uploads); optional **R2** later.
 Cloudflare Email Routing is receive-only — use **Resend** or **MailChannels** to send mail.
 
-Use the **elorakart / Alpainoo Cloudflare account** (`npx wrangler login`).
+Use the **Alpainoo Cloudflare account** (`npx wrangler login`).
 
 ---
 
@@ -12,7 +12,7 @@ Use the **elorakart / Alpainoo Cloudflare account** (`npx wrangler login`).
 ```bash
 npm install
 npx wrangler logout   # if logged into the wrong account
-npx wrangler login    # elorakart Cloudflare email
+npx wrangler login    # Alpainoo Cloudflare email
 ```
 
 ---
@@ -180,7 +180,7 @@ npm run cf:preview
 |-------|-----|
 | Prisma / DB errors on Workers | Confirm `DB` binding + remote migrations applied |
 | Uploads fail | Ensure `StoredImage` table exists (`0004_stored_images.sql`); images must be ≤600 KB after client compress; optional R2 if preferred |
-| Wrong Cloudflare account | `wrangler logout` then `login` with elorakart email |
+| Wrong Cloudflare account | `wrangler logout` then `login` with Alpainoo email |
 | Google login fails | Match `AUTH_URL` + OAuth callback to Worker URL |
 | Emails skipped | Set `RESEND_API_KEY` or `MAILCHANNELS_API_KEY` |
 

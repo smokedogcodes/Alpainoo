@@ -3,7 +3,7 @@
 import { getRazorpay, verifyPaymentSignature } from "@/lib/razorpay";
 import { auth } from "@/auth";
 import { CheckoutSchema, VerifyPaymentSchema } from "@/lib/validation";
-import { signOrderAccess } from "@/lib/security/order-access";
+import { signOrderAccess, verifyOrderAccess } from "@/lib/security/order-access";
 import { opaqueHref } from "@/lib/security/opaque-routes";
 import { getProductById } from "@/lib/db/products";
 import { upsertUserByEmail } from "@/lib/db/users";
@@ -20,7 +20,7 @@ export type CheckoutInput = {
   city: string;
   state: string;
   pincode: string;
-  items: Array<{ productId: string; quantity: number }>;
+  items: Array<{ productId: string; quantity: number; variantId?: string }>;
   couponCode?: string;
 };
 
@@ -35,6 +35,7 @@ export type CheckoutOrderResult =
       key: string;
       mock: boolean;
       successUrl: string;
+      paymentToken: string;
     }
   | { ok: false; error: string };
 
@@ -52,11 +53,43 @@ function successUrlFor(
   return opaqueHref(`/checkout/success?t=${encodeURIComponent(t)}`);
 }
 
+function paymentTokenFor(order: { id: string; orderNumber: string }, userId: string) {
+  return signOrderAccess({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    userId,
+    celebrate: false,
+  });
+}
+
+function ownsOrder(
+  order: { id: string; userId: string | null; email: string },
+  session: { user?: { id?: string | null; email?: string | null } | null } | null,
+  paymentToken?: string
+) {
+  if (session?.user?.id && order.userId === session.user.id) return true;
+  if (
+    session?.user?.email &&
+    order.email.toLowerCase() === session.user.email.toLowerCase()
+  ) {
+    return true;
+  }
+  if (paymentToken) {
+    const access = verifyOrderAccess(paymentToken);
+    if (
+      access &&
+      access.orderId === order.id &&
+      order.userId &&
+      access.userId === order.userId
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function createCheckoutOrder(input: CheckoutInput): Promise<CheckoutOrderResult> {
   const session = await auth();
-  if (!session?.user?.id || !session.user.email) {
-    return { ok: false, error: "Please sign in to checkout" };
-  }
 
   const parsed = CheckoutSchema.safeParse(input);
   if (!parsed.success) {
@@ -65,48 +98,93 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
   const data = parsed.data;
 
   try {
-    const qtyByProduct = new Map<string, number>();
-    for (const item of data.items) {
-      qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    const { checkPincodeServiceability } = await import("@/lib/shiprocket");
+    const serviceability = await checkPincodeServiceability(data.pincode);
+    if (!serviceability.available) {
+      return {
+        ok: false,
+        error: "We cannot deliver to this pin code yet. Please try a different address.",
+      };
     }
-    const productIds = Array.from(qtyByProduct.keys());
 
-    const products = (
-      await Promise.all(productIds.map((id) => getProductById(id)))
-    ).filter(Boolean);
+    const qtyByLine = new Map<string, { productId: string; variantId?: string; quantity: number }>();
+    for (const item of data.items) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      const prev = qtyByLine.get(key);
+      qtyByLine.set(key, {
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: (prev?.quantity ?? 0) + item.quantity,
+      });
+    }
 
-    const lineItems = productIds.map((productId) => {
-      const product = products.find((p) => p!.id === productId);
-      const quantity = qtyByProduct.get(productId)!;
+    const { listPublicVariants } = await import("@/lib/actions/variants");
+    const lineItems: Array<{
+      product: NonNullable<Awaited<ReturnType<typeof getProductById>>>;
+      quantity: number;
+      price: number;
+      variantId?: string;
+    }> = [];
+
+    for (const line of Array.from(qtyByLine.values())) {
+      const product = await getProductById(line.productId);
       if (!product || product.isHidden) throw new Error("Product not found");
-      if (product.stock < quantity) throw new Error(`${product.title} is out of stock`);
-      return { product, quantity, price: product.sellingPrice };
-    });
 
-    let totalAmount = lineItems.reduce((s, l) => s + l.price * l.quantity, 0);
+      if (line.variantId) {
+        const variants = await listPublicVariants(product.id);
+        const variant = variants.find((v) => v.id === line.variantId);
+        if (!variant) throw new Error(`Variant unavailable for ${product.title}`);
+        if (variant.stock < line.quantity) {
+          throw new Error(`${product.title} (${variant.name}) is out of stock`);
+        }
+        lineItems.push({
+          product,
+          quantity: line.quantity,
+          price: variant.sellingPrice ?? product.sellingPrice,
+          variantId: variant.id,
+        });
+      } else {
+        if (product.stock < line.quantity) throw new Error(`${product.title} is out of stock`);
+        lineItems.push({
+          product,
+          quantity: line.quantity,
+          price: product.sellingPrice,
+        });
+      }
+    }
 
-    // Optional coupon (Phase 2)
+    const subtotalAmount = lineItems.reduce((s, l) => s + l.price * l.quantity, 0);
+    let discountAmount = 0;
+    let couponCode: string | null = null;
+    let merchandiseTotal = subtotalAmount;
+
     if (input.couponCode?.trim()) {
       try {
         const { applyCouponToTotal } = await import("@/lib/coupons");
-        const discounted = await applyCouponToTotal(
-          input.couponCode.trim(),
-          totalAmount
-        );
-        totalAmount = discounted.total;
-      } catch {
-        /* ignore invalid coupon at create — validated in UI */
+        const discounted = await applyCouponToTotal(input.couponCode.trim(), subtotalAmount);
+        merchandiseTotal = discounted.total;
+        discountAmount = discounted.discount;
+        couponCode = discounted.coupon.code.toUpperCase();
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Invalid coupon",
+        };
       }
     }
+
+    const { calcShippingFee } = await import("@/lib/shipping");
+    const shippingAmount = calcShippingFee(merchandiseTotal);
+    const totalAmount = Math.round((merchandiseTotal + shippingAmount) * 100) / 100;
 
     if (totalAmount <= 0) throw new Error("Invalid order total");
 
     const orderNumber = `EK${Date.now().toString().slice(-10)}`;
 
     const user = await upsertUserByEmail({
-      email: session.user.email,
-      name: session.user.name || data.name,
-      image: session.user.image || null,
+      email: session?.user?.email || data.email,
+      name: session?.user?.name || data.name,
+      image: session?.user?.image || null,
     });
     const userId = user.id;
 
@@ -117,6 +195,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       city: data.city,
       state: data.state,
       pincode: data.pincode,
+      deliveryEstimate: serviceability.estimate || null,
     });
 
     const razorpay = getRazorpay();
@@ -138,12 +217,17 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       userId,
       email: data.email,
       totalAmount,
+      subtotalAmount,
+      discountAmount,
+      shippingAmount,
+      couponCode,
       razorpayOrderId,
       shippingAddress,
       lines: lineItems.map((l) => ({
         productId: l.product.id,
         quantity: l.quantity,
         price: l.price,
+        variantId: l.variantId || null,
       })),
     });
 
@@ -158,6 +242,9 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
           email: order.email,
           totalAmount: order.totalAmount,
           orderStatus: order.orderStatus,
+          couponCode,
+          discountAmount,
+          shippingAmount,
         },
       })
     );
@@ -171,7 +258,16 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         entityId: order.id,
         actorUserId: userId,
         actorEmail: data.email,
-        meta: { totalAmount, itemCount: lineItems.length, mock: !razorpay },
+        meta: {
+          totalAmount,
+          subtotalAmount,
+          discountAmount,
+          shippingAmount,
+          couponCode,
+          itemCount: lineItems.length,
+          guest: !session?.user?.id,
+          mock: !razorpay,
+        },
       })
     );
 
@@ -185,6 +281,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || "",
       mock: !razorpay,
       successUrl: successUrlFor(order, userId, true),
+      paymentToken: paymentTokenFor(order, userId),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Checkout failed";
@@ -193,16 +290,23 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         category: "checkout",
         action: "ORDER_CREATE_FAILED",
         message,
-        actorEmail: data.email,
-        meta: { email: data.email },
+        actorEmail: input.email,
+        meta: { email: input.email },
       })
     );
-    return { ok: false, error: message.includes("stock") || message.includes("Product") ? message : "Checkout failed. Please try again." };
+    return {
+      ok: false,
+      error:
+        message.includes("stock") || message.includes("Product") || message.includes("pin")
+          ? message
+          : "Checkout failed. Please try again.",
+    };
   }
 }
 
 export async function confirmMockPayment(
-  orderId: string
+  orderId: string,
+  paymentToken?: string
 ): Promise<{ ok: true; successUrl: string } | { ok: false; error: string }> {
   if (getRazorpay()) {
     return { ok: false, error: "Use Razorpay checkout" };
@@ -212,19 +316,20 @@ export async function confirmMockPayment(
   }
 
   const session = await auth();
-  if (!session?.user?.id) {
-    return { ok: false, error: "Please sign in" };
-  }
 
   try {
     const order = await findOrderById(orderId);
-    if (!order || order.userId !== session.user.id || order.paymentStatus !== "PENDING") {
+    if (!order || order.paymentStatus !== "PENDING") {
       return { ok: false, error: "Order not found" };
+    }
+    if (!ownsOrder(order, session, paymentToken)) {
+      return { ok: false, error: "Please sign in" };
     }
 
     const { fulfillPaidOrder } = await import("@/lib/fulfillment");
     await fulfillPaidOrder(order.id, `pay_mock_${Date.now()}`);
-    return { ok: true, successUrl: successUrlFor(order, session.user.id, true) };
+    const userId = order.userId || session?.user?.id || "";
+    return { ok: true, successUrl: successUrlFor(order, userId, true) };
   } catch {
     return { ok: false, error: "Payment failed" };
   }
@@ -235,6 +340,7 @@ export async function verifyAndFulfillPayment(input: {
   razorpayOrderId: string;
   razorpayPaymentId: string;
   razorpaySignature: string;
+  paymentToken?: string;
 }): Promise<
   { ok: true; alreadyPaid?: boolean; successUrl: string } | { ok: false; error: string }
 > {
@@ -242,27 +348,23 @@ export async function verifyAndFulfillPayment(input: {
   if (!parsed.success) return { ok: false, error: "Invalid payment payload" };
 
   const session = await auth();
-  if (!session?.user?.id) {
-    return { ok: false, error: "Please sign in" };
-  }
 
   try {
     const order = await findOrderById(parsed.data.orderId);
-    if (
-      !order ||
-      (order.userId !== session.user.id &&
-        !(session.user.email && order.email === session.user.email))
-    ) {
-      return { ok: false, error: "Order not found" };
+    if (!order) return { ok: false, error: "Order not found" };
+    if (!ownsOrder(order, session, input.paymentToken)) {
+      return { ok: false, error: "Please sign in" };
     }
     if (order.razorpayOrderId !== parsed.data.razorpayOrderId) {
       return { ok: false, error: "Order mismatch" };
     }
+
+    const userId = order.userId || session?.user?.id || "";
     if (order.paymentStatus === "PAID") {
       return {
         ok: true,
         alreadyPaid: true,
-        successUrl: successUrlFor(order, session.user.id, false),
+        successUrl: successUrlFor(order, userId, false),
       };
     }
 
@@ -278,7 +380,7 @@ export async function verifyAndFulfillPayment(input: {
     return {
       ok: true,
       alreadyPaid: false,
-      successUrl: successUrlFor(order, session.user.id, true),
+      successUrl: successUrlFor(order, userId, true),
     };
   } catch {
     return { ok: false, error: "Payment verification failed" };

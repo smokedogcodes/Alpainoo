@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { asD1, getD1, toDate } from "@/lib/db/d1";
 
 const LEVELS = ["ERROR", "SUCCESS", "WARN", "INFO"] as const;
@@ -391,7 +391,7 @@ export default async function AdminLogsPage({
 }: {
   searchParams: { level?: string; category?: string; tab?: string; page?: string; table?: string };
 }) {
-  await requireAdmin();
+  await requireScreenView("logs");
 
   const tab = searchParams.tab === "db" ? "db" : "system";
   const table = searchParams.table || "all";

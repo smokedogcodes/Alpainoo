@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminApi } from "@/lib/auth/admin";
+import { requirePermissionApi } from "@/lib/auth/admin";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { storeProductImage } from "@/lib/storage/uploads";
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const admin = await requireAdminApi();
+  const admin = await requirePermissionApi("products", "edit");
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

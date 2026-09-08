@@ -24,6 +24,7 @@ export function SiteFooter() {
           <ul className="mt-4 flex flex-wrap gap-3 text-sm text-muted">
             <li><Link href={opaqueHref("/sale")} className="font-medium text-price-sale hover:underline">Sale</Link></li>
             <li><Link href={opaqueHref("/products")} className="hover:underline hover:text-sage">Shop</Link></li>
+            <li><Link href={opaqueHref("/collections")} className="hover:underline hover:text-sage">Collections</Link></li>
             <li><Link href={opaqueHref("/blog")} className="hover:underline hover:text-sage">Blog</Link></li>
             <li><Link href={opaqueHref("/about")} className="hover:underline hover:text-sage">About</Link></li>
           </ul>

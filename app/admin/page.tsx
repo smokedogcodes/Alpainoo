@@ -1,8 +1,10 @@
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { getAnalytics } from "@/lib/reports";
 import { formatINR } from "@/lib/utils";
 import { RevenueChart, StatusChart } from "@/components/admin/charts";
 
 export default async function AdminOverviewPage() {
+  await requireScreenView("overview");
   const data = await getAnalytics();
   const lowStock = data.lowStock as { id: string; title: string; stock: number }[];
   const topProducts = data.topProducts as { title: string; units: number }[];

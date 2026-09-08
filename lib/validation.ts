@@ -24,6 +24,12 @@ export const CheckoutSchema = z.object({
       z.object({
         productId: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/),
         quantity: z.number().int().min(1).max(99),
+        variantId: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-zA-Z0-9_-]+$/)
+          .optional(),
       })
     )
     .min(1)

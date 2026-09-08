@@ -44,7 +44,7 @@ npm run dev
    ```
 
 Optional local MySQL via Docker: `docker compose up -d` then  
-`DATABASE_URL="mysql://elora:elora@127.0.0.1:3306/alpainoo"`.
+`DATABASE_URL="mysql://alpainoo:alpainoo@127.0.0.1:3306/alpainoo"`.
 
 ### 2. File storage (product images)
 Admin uploads go to `public/uploads/products/` and are served as `/uploads/products/...`.  

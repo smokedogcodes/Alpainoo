@@ -3,25 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { slugify } from "@/lib/utils";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireAdmin, requirePermission } from "@/lib/auth/admin";
 import { OrderStatusSchema, sanitizeImageUrl } from "@/lib/validation";
 import { sanitizeBlogHtml } from "@/lib/sanitize-html";
 import { asD1, cuidLike, getD1, sqlNow } from "@/lib/db/d1";
 import { findOrderById } from "@/lib/db/orders";
-import { findUserById, updateUserRole } from "@/lib/db/users";
+import { findUserById, updateUserAccess } from "@/lib/db/users";
 import { deleteBlogPost, upsertBlogPost } from "@/lib/db/blog";
+import type { AssignableRole, PermissionMatrix } from "@/lib/auth/permissions";
+import { serializePermissionMatrix } from "@/lib/auth/permissions";
 
 const ProductFormSchema = z.object({
   id: z.string().optional(),
   title: z.string().trim().min(2).max(200),
-  brand: z.string().trim().min(1).max(100),
+  brand: z.string().trim().max(100).optional(),
   category: z.string().trim().min(1).max(100),
-  description: z.string().trim().min(1).max(10000),
+  description: z.string().trim().max(10000).optional(),
   volume: z.string().trim().max(50).optional(),
   mrp: z.number().positive().max(1_000_000),
   sellingPrice: z.number().positive().max(1_000_000),
   stock: z.number().int().min(0).max(1_000_000),
-  sku: z.string().trim().min(1).max(64),
+  sku: z.string().trim().max(64).optional(),
   ingredients: z.string().max(5000).optional(),
   usage: z.string().max(5000).optional(),
   benefits: z.array(z.string().max(200)).max(50),
@@ -33,7 +35,7 @@ const ProductFormSchema = z.object({
 });
 
 export async function upsertProduct(formData: FormData) {
-  await requireAdmin();
+  await requirePermission("products", "edit");
 
   const raw = {
     id: String(formData.get("id") || "") || undefined,
@@ -94,39 +96,64 @@ export async function upsertProduct(formData: FormData) {
   const volume = rest.volume || null;
   const ingredients = rest.ingredients || null;
   const usage = rest.usage || null;
+  const brand = (rest.brand || "").trim() || "Alpainoo";
+  const description = (rest.description || "").trim() || title;
+  let sku = (rest.sku || "").trim();
 
-  let productId = id;
+  let productId = id || cuidLike();
+  if (!sku) {
+    sku = `ALP-${productId.replace(/^c/, "").slice(0, 10).toUpperCase()}`;
+  }
+
+  // Resolve category master id when name matches
+  let categoryId: string | null = null;
 
   const db = await getD1();
   if (db) {
     const d1 = asD1(db);
     const now = sqlNow();
+    try {
+      const catRow = await d1
+        .prepare(`SELECT id FROM Category WHERE name = ? OR slug = ? LIMIT 1`)
+        .bind(rest.category, slugify(rest.category))
+        .first();
+      if (catRow) categoryId = String((catRow as { id: string }).id);
+    } catch (err) {
+      console.warn("[upsertProduct] category lookup failed:", err);
+    }
+
+    try {
     if (id) {
       const prev = await d1
-        .prepare(`SELECT stock FROM Product WHERE id = ? LIMIT 1`)
+        .prepare(`SELECT stock, sku FROM Product WHERE id = ? LIMIT 1`)
         .bind(id)
         .first();
       if (!prev) throw new Error("Product not found");
       const prevStock = Number((prev as { stock: number }).stock);
+      // Keep existing SKU if form left blank on edit
+      if (!(rest.sku || "").trim()) {
+        sku = String((prev as { sku: string }).sku);
+      }
       await d1
         .prepare(
           `UPDATE Product SET title = ?, slug = ?, description = ?, brand = ?, volume = ?, mrp = ?, sellingPrice = ?,
-           discount = ?, sku = ?, stock = ?, category = ?, benefits = ?, ingredients = ?, usage = ?, images = ?,
+           discount = ?, sku = ?, stock = ?, category = ?, categoryId = ?, benefits = ?, ingredients = ?, usage = ?, images = ?,
            metaTitle = ?, metaDescription = ?, lowStockThreshold = ?, updatedAt = ?
            WHERE id = ?`
         )
         .bind(
           title,
           slug,
-          rest.description,
-          rest.brand,
+          description,
+          brand,
           volume,
           mrp,
           sellingPrice,
           discount,
-          rest.sku,
+          sku,
           stock,
           rest.category,
+          categoryId,
           benefitsJson,
           ingredients,
           usage,
@@ -146,28 +173,36 @@ export async function upsertProduct(formData: FormData) {
           .bind(cuidLike(), id, stock - prevStock, stockNote || "Manual stock update", now)
           .run();
       }
+      productId = id;
     } else {
-      productId = cuidLike();
+      // Ensure unique SKU
+      const clash = await d1
+        .prepare(`SELECT id FROM Product WHERE sku = ? LIMIT 1`)
+        .bind(sku)
+        .first();
+      if (clash) sku = `ALP-${cuidLike().slice(1, 11).toUpperCase()}`;
+
       await d1
         .prepare(
           `INSERT INTO Product (id, title, slug, description, brand, volume, mrp, sellingPrice, discount, sku, stock,
-           category, benefits, ingredients, usage, images, rating, reviewCount, isHidden, metaTitle, metaDescription,
+           category, categoryId, benefits, ingredients, usage, images, rating, reviewCount, isHidden, metaTitle, metaDescription,
            lowStockThreshold, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4.5, 0, 0, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4.5, 0, 0, ?, ?, ?, ?, ?)`
         )
         .bind(
           productId,
           title,
           slug,
-          rest.description,
-          rest.brand,
+          description,
+          brand,
           volume,
           mrp,
           sellingPrice,
           discount,
-          rest.sku,
+          sku,
           stock,
           rest.category,
+          categoryId,
           benefitsJson,
           ingredients,
           usage,
@@ -186,19 +221,40 @@ export async function upsertProduct(formData: FormData) {
         .bind(cuidLike(), productId, stock, "Initial stock", now)
         .run();
     }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[upsertProduct] D1 write failed:", msg);
+      if (/unique|UNIQUE/i.test(msg)) {
+        throw new Error("A product with this title or SKU already exists");
+      }
+      if (msg === "Product not found") throw err;
+      throw new Error("Could not save product. Please try again.");
+    }
   } else {
     const { getPrismaAsync } = await import("@/lib/prisma");
     const prisma = await getPrismaAsync();
+    const cat = await prisma.category.findFirst({
+      where: { OR: [{ name: rest.category }, { slug: slugify(rest.category) }] },
+    });
+    categoryId = cat?.id ?? null;
+
     const data = {
-      ...rest,
       title,
       slug,
+      brand,
+      category: rest.category,
+      categoryId,
+      description,
+      volume,
       mrp,
       sellingPrice,
       discount,
       stock,
+      sku,
       benefits: benefitsJson,
       images: imagesJson,
+      ingredients,
+      usage,
       metaTitle: metaTitleVal,
       metaDescription: metaDescriptionVal,
       ...(lowStockThreshold != null ? { lowStockThreshold } : {}),
@@ -206,6 +262,7 @@ export async function upsertProduct(formData: FormData) {
 
     if (id) {
       const prev = await prisma.product.findUnique({ where: { id } });
+      if (prev && !(rest.sku || "").trim()) data.sku = prev.sku;
       await prisma.product.update({ where: { id }, data });
       if (prev && prev.stock !== stock) {
         await prisma.stockLog.create({
@@ -216,6 +273,7 @@ export async function upsertProduct(formData: FormData) {
           },
         });
       }
+      productId = id;
     } else {
       const created = await prisma.product.create({ data });
       productId = created.id;
@@ -235,7 +293,7 @@ export async function upsertProduct(formData: FormData) {
       message: id ? `Product updated: ${title}` : `Product created: ${title}`,
       entityType: "Product",
       entityId: productId,
-      meta: { sku: rest.sku, stock },
+      meta: { sku, stock },
     })
   );
   void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
@@ -243,13 +301,13 @@ export async function upsertProduct(formData: FormData) {
       tableName: "Product",
       operation: id ? "UPDATE" : "INSERT",
       rowId: productId,
-      newData: { id: productId, title, stock, sku: rest.sku },
+      newData: { id: productId, title, stock, sku },
     })
   );
 }
 
 export async function toggleHideProduct(id: string, isHidden: boolean) {
-  await requireAdmin();
+  await requirePermission("products", "edit");
   if (!id || typeof isHidden !== "boolean") throw new Error("Invalid input");
 
   const db = await getD1();
@@ -269,7 +327,7 @@ export async function toggleHideProduct(id: string, isHidden: boolean) {
 }
 
 export async function deleteProduct(id: string) {
-  await requireAdmin();
+  await requirePermission("products", "delete");
   if (!id) throw new Error("Invalid product");
 
   const db = await getD1();
@@ -305,7 +363,7 @@ export async function deleteProduct(id: string) {
 }
 
 export async function updateOrderStatus(id: string, orderStatus: string) {
-  await requireAdmin();
+  await requirePermission("orders", "edit");
   const status = OrderStatusSchema.parse(orderStatus);
   const existing = await findOrderById(id);
   if (!existing) throw new Error("Order not found");
@@ -363,7 +421,7 @@ export async function updateOrderStatus(id: string, orderStatus: string) {
 }
 
 export async function upsertBlog(formData: FormData) {
-  await requireAdmin();
+  await requirePermission("blog", "edit");
 
   const id = String(formData.get("id") || "");
   const title = String(formData.get("title") || "").trim();
@@ -408,20 +466,31 @@ export async function upsertBlog(formData: FormData) {
 }
 
 export async function deleteBlog(id: string) {
-  await requireAdmin();
+  await requirePermission("blog", "delete");
   if (!id) throw new Error("Invalid blog");
   await deleteBlogPost(id);
   revalidatePath("/admin/blog");
   revalidatePath("/blog");
 }
 
-export async function setUserRole(userId: string, role: "ADMIN" | "CUSTOMER") {
+export async function setUserAccess(input: {
+  userId: string;
+  role: AssignableRole;
+  permissions: PermissionMatrix | null;
+  roleExpiresAt: string | null;
+  useRoleDefaults: boolean;
+}) {
   await requireAdmin();
-  if (!userId || (role !== "ADMIN" && role !== "CUSTOMER")) {
+  const { userId, role } = input;
+  if (!userId || !["ADMIN", "STAFF", "TEMP", "CUSTOMER"].includes(role)) {
     throw new Error("Invalid input");
   }
 
-  if (role === "CUSTOMER") {
+  if (role === "TEMP" && !input.roleExpiresAt) {
+    throw new Error("Temp role requires an expiry date");
+  }
+
+  if (role !== "ADMIN") {
     const db = await getD1();
     if (db) {
       const countRow = await asD1(db)
@@ -443,24 +512,55 @@ export async function setUserRole(userId: string, role: "ADMIN" | "CUSTOMER") {
     }
   }
 
-  await updateUserRole(userId, role);
+  const permissionsJson =
+    role === "ADMIN" || role === "CUSTOMER" || input.useRoleDefaults || !input.permissions
+      ? "[]"
+      : serializePermissionMatrix(input.permissions);
+
+  const expires =
+    role === "TEMP" && input.roleExpiresAt ? new Date(input.roleExpiresAt) : null;
+  if (role === "TEMP" && expires && Number.isNaN(expires.getTime())) {
+    throw new Error("Invalid expiry date");
+  }
+
+  await updateUserAccess(userId, {
+    role,
+    permissions: permissionsJson,
+    roleExpiresAt: expires,
+  });
 
   void import("@/lib/logging/system-log").then(({ logSuccess }) =>
     logSuccess({
       category: "admin",
-      action: "USER_ROLE_CHANGED",
-      message: `User role set to ${role}`,
+      action: "USER_ACCESS_CHANGED",
+      message: `User access set to ${role}`,
       entityType: "User",
       entityId: userId,
-      meta: { role },
+      meta: {
+        role,
+        useRoleDefaults: input.useRoleDefaults,
+        roleExpiresAt: expires?.toISOString() ?? null,
+      },
     })
   );
 
   revalidatePath("/admin/users");
+  revalidatePath("/admin/roles");
+}
+
+/** @deprecated Prefer setUserAccess — kept for simple ADMIN/CUSTOMER toggles */
+export async function setUserRole(userId: string, role: "ADMIN" | "CUSTOMER") {
+  await setUserAccess({
+    userId,
+    role,
+    permissions: null,
+    roleExpiresAt: null,
+    useRoleDefaults: true,
+  });
 }
 
 export async function approveCancelRequest(orderId: string) {
-  await requireAdmin();
+  await requirePermission("orders", "edit");
   const order = await findOrderById(orderId);
   if (!order) throw new Error("Order not found");
   if (order.orderStatus !== "CANCEL_REQUESTED") {
@@ -477,6 +577,12 @@ export async function approveCancelRequest(orderId: string) {
           .prepare(`UPDATE Product SET stock = stock + ?, updatedAt = ? WHERE id = ?`)
           .bind(item.quantity, now, item.productId)
           .run();
+        if (item.variantId) {
+          await d1
+            .prepare(`UPDATE ProductVariant SET stock = stock + ? WHERE id = ? AND productId = ?`)
+            .bind(item.quantity, item.variantId, item.productId)
+            .run();
+        }
         await d1
           .prepare(
             `INSERT INTO StockLog (id, productId, change, note, createdAt) VALUES (?, ?, ?, ?, ?)`
@@ -490,16 +596,42 @@ export async function approveCancelRequest(orderId: string) {
           )
           .run();
       }
+      if (order.razorpayPaymentId) {
+        try {
+          const { createRefund } = await import("@/lib/razorpay");
+          await createRefund(order.razorpayPaymentId, {
+            notes: { orderId, orderNumber: order.orderNumber, reason: "cancel_approved" },
+          });
+        } catch (err) {
+          console.error("[refund] cancel approve:", err);
+          throw new Error(
+            "Could not refund payment automatically. Retry refund from admin, then approve cancel."
+          );
+        }
+      }
     }
     await d1
       .prepare(
-        `UPDATE "Order" SET orderStatus = 'CANCELLED', cancelRequestedAt = NULL, cancelReason = ?, previousOrderStatus = NULL, updatedAt = ? WHERE id = ?`
+        `UPDATE "Order" SET orderStatus = 'CANCELLED', paymentStatus = CASE WHEN paymentStatus = 'PAID' OR paymentStatus = 'REFUNDED' THEN 'REFUNDED' ELSE paymentStatus END, cancelRequestedAt = NULL, cancelReason = ?, previousOrderStatus = NULL, updatedAt = ? WHERE id = ?`
       )
       .bind(order.cancelReason, now, orderId)
       .run();
   } else {
     const { getPrismaAsync } = await import("@/lib/prisma");
     const prisma = await getPrismaAsync();
+    if (order.paymentStatus === "PAID" && order.razorpayPaymentId) {
+      try {
+        const { createRefund } = await import("@/lib/razorpay");
+        await createRefund(order.razorpayPaymentId, {
+          notes: { orderId, orderNumber: order.orderNumber, reason: "cancel_approved" },
+        });
+      } catch (err) {
+        console.error("[refund] cancel approve:", err);
+        throw new Error(
+          "Could not refund payment automatically. Retry refund from admin, then approve cancel."
+        );
+      }
+    }
     await prisma.$transaction(async (tx) => {
       if (order.paymentStatus === "PAID") {
         for (const item of order.items) {
@@ -507,6 +639,12 @@ export async function approveCancelRequest(orderId: string) {
             where: { id: item.productId },
             data: { stock: { increment: item.quantity } },
           });
+          if (item.variantId) {
+            await tx.productVariant.updateMany({
+              where: { id: item.variantId, productId: item.productId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
           await tx.stockLog.create({
             data: {
               productId: item.productId,
@@ -521,6 +659,10 @@ export async function approveCancelRequest(orderId: string) {
         where: { id: orderId },
         data: {
           orderStatus: "CANCELLED",
+          paymentStatus:
+            order.paymentStatus === "PAID" || order.paymentStatus === "REFUNDED"
+              ? "REFUNDED"
+              : order.paymentStatus,
           cancelRequestedAt: null,
           cancelReason: order.cancelReason,
           previousOrderStatus: null,
@@ -552,7 +694,7 @@ export async function approveCancelRequest(orderId: string) {
 }
 
 export async function rejectCancelRequest(orderId: string) {
-  await requireAdmin();
+  await requirePermission("orders", "edit");
   const order = await findOrderById(orderId);
   if (!order) throw new Error("Order not found");
   if (order.orderStatus !== "CANCEL_REQUESTED") {
@@ -606,7 +748,7 @@ export async function rejectCancelRequest(orderId: string) {
 }
 
 export async function syncShipmentTracking(orderId: string) {
-  await requireAdmin();
+  await requirePermission("orders", "edit");
   const order = await findOrderById(orderId);
   if (!order?.shipment) throw new Error("No shipment for this order");
 

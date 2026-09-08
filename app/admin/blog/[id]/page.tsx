@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { getPostById } from "@/lib/db/blog";
 import { BlogForm } from "@/components/admin/blog-form";
+import { requireScreenView } from "@/lib/auth/require-screen";
 
 export default async function EditBlogPage({ params }: { params: { id: string } }) {
+  await requireScreenView("blog");
   const post = await getPostById(params.id);
   if (!post) notFound();
   return (

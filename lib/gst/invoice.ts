@@ -220,6 +220,21 @@ export async function buildInvoiceHtml(order: InvoiceOrder): Promise<string> {
     </table>
 
     <div style="margin-top:20px;text-align:right;font-size:14px;">
+      ${
+        order.subtotalAmount != null
+          ? `<p style="margin:4px 0;">Subtotal: ${formatINR(Number(order.subtotalAmount))}</p>`
+          : ""
+      }
+      ${
+        Number(order.discountAmount || 0) > 0
+          ? `<p style="margin:4px 0;">Coupon${order.couponCode ? ` (${escapeHtml(String(order.couponCode))})` : ""}: −${formatINR(Number(order.discountAmount))}</p>`
+          : ""
+      }
+      ${
+        Number(order.shippingAmount || 0) > 0
+          ? `<p style="margin:4px 0;">Shipping: ${formatINR(Number(order.shippingAmount))}</p>`
+          : `<p style="margin:4px 0;">Shipping: Free</p>`
+      }
       <p style="margin:4px 0;">Taxable value: ${formatINR(taxable)}</p>
       <p style="margin:4px 0;">GST (18% incl.): ${formatINR(gst)}</p>
       <p style="margin:12px 0 0;font-size:18px;"><strong>Total: ${formatINR(order.totalAmount)}</strong></p>

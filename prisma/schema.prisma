@@ -16,8 +16,10 @@ model User {
   emailVerified DateTime?
   image         String?
   role          String          @default("CUSTOMER")
-  /// ADMIN | STAFF | CUSTOMER — STAFF uses permissions JSON
+  /// ADMIN | STAFF | TEMP | CUSTOMER — STAFF/TEMP use permissions JSON override (or role templates)
   permissions   String          @default("[]")
+  /// When role is TEMP, access ends at this time (UTC).
+  roleExpiresAt DateTime?
   avatarUrl     String?
   phone         String?
   createdAt     DateTime        @default(now())
@@ -27,9 +29,28 @@ model User {
   orders        Order[]
   chatSessions  ChatSession[]
   tickets       SupportTicket[]
-  reviews       Review[]
-  wishlistItems WishlistItem[]
+  reviews        Review[]
+  wishlistItems  WishlistItem[]
   returnRequests ReturnRequest[]
+  savedAddresses SavedAddress[]
+}
+
+model SavedAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String?
+  name      String
+  phone     String
+  address   String
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Account {
@@ -122,6 +143,10 @@ model Order {
   user                 User?       @relation(fields: [userId], references: [id])
   email                String
   totalAmount          Float
+  subtotalAmount       Float?
+  discountAmount       Float       @default(0)
+  shippingAmount       Float       @default(0)
+  couponCode           String?
   paymentStatus        String      @default("PENDING")
   orderStatus          String      @default("PENDING")
   razorpayOrderId      String?
@@ -145,6 +170,7 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   Product @relation(fields: [productId], references: [id])
+  variantId String?
   quantity  Int
   price     Float
 
@@ -501,14 +527,16 @@ model EmailCampaign {
 }
 
 model SiteSettings {
-  id              String  @id @default("default")
-  gstin           String?
-  businessName    String?
-  businessAddress String?
-  invoicePrefix   String  @default("ALP")
-  lowStockDefault Int     @default(5)
-  metaPixelId     String?
-  gaMeasurementId String?
+  id                 String  @id @default("default")
+  gstin              String?
+  businessName       String?
+  businessAddress    String?
+  invoicePrefix      String  @default("ALP")
+  lowStockDefault    Int     @default(5)
+  metaPixelId        String?
+  gaMeasurementId    String?
+  /// JSON: { STAFF: PermissionMatrix, TEMP: PermissionMatrix }
+  adminRoleTemplates String?
 }
 
 model AbandonedCart {

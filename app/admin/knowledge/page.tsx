@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireScreenView } from "@/lib/auth/require-screen";
 import { KnowledgeAdmin } from "@/components/admin/knowledge-admin";
 import { listKnowledgeArticles } from "@/lib/db/knowledge";
 
 export default async function AdminKnowledgePage() {
-  await requireAdmin();
+  await requireScreenView("knowledge");
   const articles = await listKnowledgeArticles();
 
   return (
