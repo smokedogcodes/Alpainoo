@@ -1,12 +1,15 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 import type { DefaultSession } from "next-auth";
 import {
   findUserByEmail,
   findUserById,
+  markEmailVerified,
   updateUserRole,
   upsertUserByEmail,
 } from "@/lib/db/users";
+import { verifyEmailLoginTicket } from "@/lib/auth/email-login-ticket";
 import { resolvePermissionMatrix } from "@/lib/auth/permissions";
 
 declare module "next-auth" {
@@ -62,7 +65,6 @@ function applyUserTokenFields(
     permissionsJson: dbUser.permissions,
     roleExpiresAt: dbUser.roleExpiresAt,
   });
-  // Persist DB role; middleware uses effective via resolve again
   token.role = resolved.expired ? "CUSTOMER" : dbUser.role;
   token.permissions = dbUser.permissions || "[]";
   token.roleExpiresAt = dbUser.roleExpiresAt
@@ -73,12 +75,38 @@ function applyUserTokenFields(
 const useSecureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // JWT-only — no PrismaAdapter (Workers cannot run Prisma). Users upserted on sign-in.
+  // JWT-only — no PrismaAdapter. Users upserted by email on sign-in.
+  // Email OTP creates the same User row; later Google login matches by email.
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID?.trim(),
       clientSecret: process.env.AUTH_GOOGLE_SECRET?.trim(),
       allowDangerousEmailAccountLinking: true,
+    }),
+    Credentials({
+      id: "email-otp",
+      name: "Email OTP",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        ticket: { label: "Ticket", type: "text" },
+      },
+      async authorize(credentials) {
+        const email = String(credentials?.email || "")
+          .trim()
+          .toLowerCase();
+        const ticket = String(credentials?.ticket || "");
+        if (!email || !ticket) return null;
+        const verified = verifyEmailLoginTicket(ticket, email);
+        if (!verified) return null;
+        const user = await findUserById(verified.userId);
+        if (!user || user.email.toLowerCase() !== email) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        };
+      },
     }),
   ],
   session: { strategy: "jwt" },
@@ -136,7 +164,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       if (!user.email) return false;
       try {
         const dbUser = await upsertUserByEmail({
@@ -145,6 +173,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           image: user.image,
         });
         user.id = dbUser.id;
+        if (account?.provider === "google" || account?.provider === "email-otp") {
+          await markEmailVerified(dbUser.id);
+        }
         await ensureAdminRole(dbUser.id, user.email);
       } catch (err) {
         console.error("[auth] signIn upsert failed", err);

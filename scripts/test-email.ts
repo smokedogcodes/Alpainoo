@@ -1,4 +1,5 @@
 import { sendTransactionalEmail, emailConfigured } from "@/lib/email/resend";
+import { smtpConfigured } from "@/lib/email/config";
 
 async function main() {
   const to = process.argv[2]?.trim();
@@ -8,9 +9,17 @@ async function main() {
   }
 
   if (!emailConfigured()) {
-    console.error("Set RESEND_API_KEY or MAILCHANNELS_API_KEY in .env first.");
+    console.error(
+      "Set SMTP_* (Gmail) and/or RESEND_API_KEY / MAILCHANNELS_API_KEY in .env first."
+    );
     process.exit(1);
   }
+
+  console.log(
+    smtpConfigured()
+      ? "SMTP configured — sendTransactionalEmail will try SMTP first."
+      : "SMTP not set — using Resend/MailChannels."
+  );
 
   const result = await sendTransactionalEmail({
     to,

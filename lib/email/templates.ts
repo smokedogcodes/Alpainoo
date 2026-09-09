@@ -153,6 +153,48 @@ export function orderRefundedEmail(order: OrderEmailPayload) {
   return { subject, html, text };
 }
 
+export function phoneOtpEmail(input: {
+  code: string;
+  phoneMasked: string;
+  expiresMinutes: number;
+}) {
+  const subject = "Your Alpainoo phone verification code";
+  const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f7f5f0;font-family:Georgia,'Times New Roman',serif;">
+  <div style="max-width:560px;margin:24px auto;background:#fffaf3;border:1px solid #e8e4dc;padding:28px;">
+    <p style="margin:0 0 4px;font-size:22px;color:#5a6b4f;letter-spacing:0.02em;">Alpainoo</p>
+    <h1 style="margin:0 0 16px;font-size:20px;font-weight:normal;color:#2c2a26;">Verify your mobile</h1>
+    <p style="color:#4a463f;line-height:1.5;">Use this code to verify <strong>${escapeHtml(input.phoneMasked)}</strong> for delivery contact.</p>
+    <p style="margin:24px 0;font-size:32px;letter-spacing:0.35em;color:#2c2a26;font-family:ui-monospace,Menlo,monospace;">${escapeHtml(input.code)}</p>
+    <p style="color:#4a463f;line-height:1.5;">This code expires in ${input.expiresMinutes} minutes. If you did not request it, you can ignore this email.</p>
+    <p style="margin:24px 0 0;font-size:12px;color:#8a857c;">Alpainoo · do not share this code</p>
+  </div>
+</body>
+</html>`;
+  const text = `Alpainoo phone verification\n\nCode: ${input.code}\nPhone: ${input.phoneMasked}\nExpires in ${input.expiresMinutes} minutes.\n\nIf you did not request this, ignore this email.`;
+  return { subject, html, text };
+}
+
+export function emailOtpEmail(input: { code: string; expiresMinutes: number }) {
+  const subject = "Your Alpainoo email verification code";
+  const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f7f5f0;font-family:Georgia,'Times New Roman',serif;">
+  <div style="max-width:560px;margin:24px auto;background:#fffaf3;border:1px solid #e8e4dc;padding:28px;">
+    <p style="margin:0 0 4px;font-size:22px;color:#5a6b4f;letter-spacing:0.02em;">Alpainoo</p>
+    <h1 style="margin:0 0 16px;font-size:20px;font-weight:normal;color:#2c2a26;">Verify your email</h1>
+    <p style="color:#4a463f;line-height:1.5;">Use this code to confirm your email for checkout. After this, you can sign in later with Google using the same address.</p>
+    <p style="margin:24px 0;font-size:32px;letter-spacing:0.35em;color:#2c2a26;font-family:ui-monospace,Menlo,monospace;">${escapeHtml(input.code)}</p>
+    <p style="color:#4a463f;line-height:1.5;">This code expires in ${input.expiresMinutes} minutes. If you did not request it, you can ignore this email.</p>
+    <p style="margin:24px 0 0;font-size:12px;color:#8a857c;">Alpainoo · do not share this code</p>
+  </div>
+</body>
+</html>`;
+  const text = `Alpainoo email verification\n\nCode: ${input.code}\nExpires in ${input.expiresMinutes} minutes.\n\nIf you did not request this, ignore this email.`;
+  return { subject, html, text };
+}
+
 export function trackingUpdatedEmail(order: OrderEmailPayload) {
   const subject = `Tracking update — ${order.orderNumber}`;
   const bits = [

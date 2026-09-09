@@ -6,11 +6,12 @@ import { CheckoutSchema, VerifyPaymentSchema } from "@/lib/validation";
 import { signOrderAccess, verifyOrderAccess } from "@/lib/security/order-access";
 import { opaqueHref } from "@/lib/security/opaque-routes";
 import { getProductById } from "@/lib/db/products";
-import { upsertUserByEmail } from "@/lib/db/users";
+import { findUserById, upsertUserByEmail } from "@/lib/db/users";
 import {
   createOrderBundle,
   findOrderById,
 } from "@/lib/db/orders";
+import { toLocal10 } from "@/lib/phone";
 
 export type CheckoutInput = {
   email: string;
@@ -91,11 +92,35 @@ function ownsOrder(
 export async function createCheckoutOrder(input: CheckoutInput): Promise<CheckoutOrderResult> {
   const session = await auth();
 
+  if (!session?.user?.id) {
+    return {
+      ok: false,
+      error: "Please sign in with Google or verify your email to place an order.",
+    };
+  }
+
   const parsed = CheckoutSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message || "Invalid checkout data" };
   }
   const data = parsed.data;
+
+  const profile = await findUserById(session.user.id);
+  const verifiedPhone =
+    profile?.phoneVerifiedAt && profile.phone ? toLocal10(profile.phone) : null;
+  if (!verifiedPhone) {
+    return {
+      ok: false,
+      error: "Please verify your mobile number before checkout.",
+    };
+  }
+  const checkoutPhone = toLocal10(data.phone);
+  if (!checkoutPhone || checkoutPhone !== verifiedPhone) {
+    return {
+      ok: false,
+      error: "Checkout phone must match your verified mobile number.",
+    };
+  }
 
   try {
     const { checkPincodeServiceability } = await import("@/lib/shiprocket");
@@ -157,6 +182,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
     let discountAmount = 0;
     let couponCode: string | null = null;
     let merchandiseTotal = subtotalAmount;
+    let couponFreeShipping = false;
 
     if (input.couponCode?.trim()) {
       try {
@@ -165,6 +191,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
         merchandiseTotal = discounted.total;
         discountAmount = discounted.discount;
         couponCode = discounted.coupon.code.toUpperCase();
+        couponFreeShipping = discounted.freeShipping;
       } catch (err) {
         return {
           ok: false,
@@ -174,7 +201,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
     }
 
     const { calcShippingFee } = await import("@/lib/shipping");
-    const shippingAmount = calcShippingFee(merchandiseTotal);
+    const shippingAmount = couponFreeShipping ? 0 : calcShippingFee(merchandiseTotal);
     const totalAmount = Math.round((merchandiseTotal + shippingAmount) * 100) / 100;
 
     if (totalAmount <= 0) throw new Error("Invalid order total");
@@ -182,15 +209,15 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
     const orderNumber = `EK${Date.now().toString().slice(-10)}`;
 
     const user = await upsertUserByEmail({
-      email: session?.user?.email || data.email,
-      name: session?.user?.name || data.name,
-      image: session?.user?.image || null,
+      email: session.user.email || data.email,
+      name: session.user.name || data.name,
+      image: session.user.image || null,
     });
-    const userId = user.id;
+    const userId = session.user.id || user.id;
 
     const shippingAddress = JSON.stringify({
       name: data.name,
-      phone: data.phone,
+      phone: verifiedPhone,
       address: data.address,
       city: data.city,
       state: data.state,
@@ -265,7 +292,7 @@ export async function createCheckoutOrder(input: CheckoutInput): Promise<Checkou
           shippingAmount,
           couponCode,
           itemCount: lineItems.length,
-          guest: !session?.user?.id,
+          guest: false,
           mock: !razorpay,
         },
       })

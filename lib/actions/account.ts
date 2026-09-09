@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/addresses";
 import { findUserById, updateUserProfile } from "@/lib/db/users";
 import { sanitizePlainText } from "@/lib/security/sanitize-text";
+import { toLocal10 } from "@/lib/phone";
 
 const ProfileSchema = z.object({
   name: z
@@ -77,6 +78,9 @@ export async function getAccountProfile() {
     email: full?.email || user.email || "",
     name: full?.name || user.name || "",
     phone: full?.phone || "",
+    phoneVerifiedAt: full?.phoneVerifiedAt
+      ? full.phoneVerifiedAt.toISOString()
+      : null,
   };
 }
 
@@ -94,6 +98,7 @@ export async function getCheckoutAddressPrefill(): Promise<{
   city: string;
   state: string;
   pincode: string;
+  phoneVerifiedAt: string | null;
 } | null> {
   const { auth } = await import("@/auth");
   const session = await auth();
@@ -101,22 +106,28 @@ export async function getCheckoutAddressPrefill(): Promise<{
 
   const full = await findUserById(session.user.id);
   const saved = await getDefaultSavedAddress(session.user.id);
+  const verifiedPhone =
+    full?.phoneVerifiedAt && full.phone ? toLocal10(full.phone) || full.phone : "";
   return {
     email: full?.email || session.user.email || "",
     name: saved?.name || full?.name || session.user.name || "",
-    phone: saved?.phone || full?.phone || "",
+    phone: verifiedPhone || saved?.phone || full?.phone || "",
     address: saved?.address || "",
     city: saved?.city || "",
     state: saved?.state || "",
     pincode: saved?.pincode || "",
+    phoneVerifiedAt: full?.phoneVerifiedAt
+      ? full.phoneVerifiedAt.toISOString()
+      : null,
   };
 }
 
 export async function saveProfile(formData: FormData) {
   const user = await requireUser({ callbackPath: "/account" });
+  const full = await findUserById(user.id);
   const parsed = ProfileSchema.safeParse({
     name: String(formData.get("name") || ""),
-    phone: String(formData.get("phone") || ""),
+    phone: String(formData.get("phone") || full?.phone || ""),
   });
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message || "Invalid profile");
@@ -131,14 +142,31 @@ export async function saveProfile(formData: FormData) {
   return { ok: true as const };
 }
 
+/** Clear phone verification (user is changing number). */
+export async function clearPhoneVerification() {
+  const user = await requireUser({ callbackPath: "/account" });
+  const { clearPhoneVerified } = await import("@/lib/db/users");
+  await clearPhoneVerified(user.id);
+  revalidatePath("/account");
+  revalidatePath("/checkout");
+  return { ok: true as const };
+}
+
 export async function saveAddress(formData: FormData) {
   const user = await requireUser({ callbackPath: "/account" });
+  const full = await findUserById(user.id);
+  const verifiedPhone =
+    full?.phoneVerifiedAt && full.phone ? toLocal10(full.phone) : null;
+  if (!verifiedPhone) {
+    throw new Error("Verify your mobile number before saving an address");
+  }
+
   const idRaw = String(formData.get("id") || "").trim();
   const parsed = AddressSchema.safeParse({
     id: idRaw || undefined,
     label: String(formData.get("label") || ""),
     name: String(formData.get("name") || ""),
-    phone: String(formData.get("phone") || ""),
+    phone: verifiedPhone,
     address: String(formData.get("address") || ""),
     city: String(formData.get("city") || ""),
     state: String(formData.get("state") || ""),
@@ -149,7 +177,12 @@ export async function saveAddress(formData: FormData) {
     throw new Error(parsed.error.issues[0]?.message || "Invalid address");
   }
 
-  const data = parsed.data;
+  const submittedPhone = toLocal10(String(formData.get("phone") || ""));
+  if (submittedPhone && submittedPhone !== verifiedPhone) {
+    throw new Error("Address phone must match your verified mobile number");
+  }
+
+  const data = { ...parsed.data, phone: verifiedPhone };
   if (data.id) {
     await updateSavedAddress({
       id: data.id,

@@ -1,6 +1,7 @@
 import type { User } from "@prisma/client";
 import { asD1, cuidLike, getD1, sqlNow, toDate } from "@/lib/db/d1";
 import type { AssignableRole } from "@/lib/auth/permissions";
+import { toLocal10 } from "@/lib/phone";
 
 function mapUser(row: Record<string, unknown>): User {
   return {
@@ -14,6 +15,7 @@ function mapUser(row: Record<string, unknown>): User {
     roleExpiresAt: row.roleExpiresAt != null ? toDate(row.roleExpiresAt) : null,
     avatarUrl: row.avatarUrl != null ? String(row.avatarUrl) : null,
     phone: row.phone != null ? String(row.phone) : null,
+    phoneVerifiedAt: row.phoneVerifiedAt != null ? toDate(row.phoneVerifiedAt) : null,
     createdAt: toDate(row.createdAt),
     updatedAt: toDate(row.updatedAt),
   };
@@ -162,18 +164,102 @@ export async function updateUserProfile(
   userId: string,
   data: { name: string; phone: string | null }
 ): Promise<User | null> {
+  const existing = await findUserById(userId);
+  const prevPhone = existing?.phone ? toLocal10(existing.phone) : null;
+  const nextPhone = data.phone ? toLocal10(data.phone) : null;
+  const phoneChanged = prevPhone !== nextPhone;
+  const clearVerified = phoneChanged || !nextPhone;
+
   const db = await getD1();
   if (!db) {
     const { getPrismaAsync } = await import("@/lib/prisma");
     const prisma = await getPrismaAsync();
     return prisma.user.update({
       where: { id: userId },
-      data: { name: data.name, phone: data.phone },
+      data: {
+        name: data.name,
+        phone: data.phone,
+        ...(clearVerified ? { phoneVerifiedAt: null } : {}),
+      },
+    });
+  }
+
+  if (clearVerified) {
+    await asD1(db)
+      .prepare(
+        `UPDATE User SET name = ?, phone = ?, phoneVerifiedAt = NULL, updatedAt = ? WHERE id = ?`
+      )
+      .bind(data.name, data.phone, sqlNow(), userId)
+      .run();
+  } else {
+    await asD1(db)
+      .prepare(`UPDATE User SET name = ?, phone = ?, updatedAt = ? WHERE id = ?`)
+      .bind(data.name, data.phone, sqlNow(), userId)
+      .run();
+  }
+  return findUserById(userId);
+}
+
+/** Set verified profile phone after successful email OTP. */
+export async function markPhoneVerified(
+  userId: string,
+  phone: string
+): Promise<User | null> {
+  const local = toLocal10(phone);
+  if (!local) return null;
+
+  const db = await getD1();
+  if (!db) {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    return prisma.user.update({
+      where: { id: userId },
+      data: { phone: local, phoneVerifiedAt: new Date() },
+    });
+  }
+
+  const now = sqlNow();
+  await asD1(db)
+    .prepare(
+      `UPDATE User SET phone = ?, phoneVerifiedAt = ?, updatedAt = ? WHERE id = ?`
+    )
+    .bind(local, now, now, userId)
+    .run();
+  return findUserById(userId);
+}
+
+export async function clearPhoneVerified(userId: string): Promise<User | null> {
+  const db = await getD1();
+  if (!db) {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    return prisma.user.update({
+      where: { id: userId },
+      data: { phoneVerifiedAt: null },
     });
   }
   await asD1(db)
-    .prepare(`UPDATE User SET name = ?, phone = ?, updatedAt = ? WHERE id = ?`)
-    .bind(data.name, data.phone, sqlNow(), userId)
+    .prepare(`UPDATE User SET phoneVerifiedAt = NULL, updatedAt = ? WHERE id = ?`)
+    .bind(sqlNow(), userId)
+    .run();
+  return findUserById(userId);
+}
+
+/** Mark email as verified (email OTP or Google OAuth). Same User row links later Google login. */
+export async function markEmailVerified(userId: string): Promise<User | null> {
+  const db = await getD1();
+  if (!db) {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    return prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: new Date() },
+    });
+  }
+  const now = sqlNow();
+  await asD1(db)
+    .prepare(`UPDATE User SET emailVerified = ?, updatedAt = ? WHERE id = ?`)
+    .bind(now, now, userId)
     .run();
   return findUserById(userId);
 }

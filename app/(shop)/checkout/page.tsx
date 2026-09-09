@@ -22,6 +22,8 @@ import {
 } from "@/lib/actions/checkout";
 import { previewCoupon } from "@/lib/actions/coupons";
 import { getCheckoutAddressPrefill } from "@/lib/actions/account";
+import { PhoneVerify } from "@/components/account/phone-verify";
+import { EmailVerifyModal } from "@/components/account/email-verify-modal";
 
 declare global {
   interface Window {
@@ -35,6 +37,7 @@ type AppliedCoupon = {
   total: number;
   label: string;
   description: string | null;
+  freeShipping: boolean;
 };
 
 function normalizePhone(raw: string) {
@@ -70,11 +73,15 @@ export default function CheckoutPage() {
     pincode: "",
   });
   const [prefillDone, setPrefillDone] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const signedIn = status === "authenticated" && Boolean(session?.user?.id);
   const subtotalAmount = cartSubtotal();
   const merchandiseAfterCoupon = appliedCoupon?.total ?? subtotalAmount;
-  const shippingAmount = calcShippingFee(merchandiseAfterCoupon);
+  const shippingAmount = appliedCoupon?.freeShipping
+    ? 0
+    : calcShippingFee(merchandiseAfterCoupon);
   const payableTotal = Math.round((merchandiseAfterCoupon + shippingAmount) * 100) / 100;
   const toFreeShip = amountToFreeShipping(merchandiseAfterCoupon);
 
@@ -97,6 +104,7 @@ export default function CheckoutPage() {
               state: f.state || saved.state,
               pincode: f.pincode || saved.pincode,
             }));
+            setPhoneVerified(Boolean(saved.phoneVerifiedAt && saved.phone));
             setPrefillDone(true);
             return;
           }
@@ -199,6 +207,7 @@ export default function CheckoutPage() {
         total: result.total,
         label: result.label,
         description: result.description,
+        freeShipping: result.freeShipping,
       });
       setCouponCode(result.code);
       toast.success(`Coupon ${result.code} applied`);
@@ -222,6 +231,14 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (!items.length) {
       toast.error("Cart is empty");
+      return;
+    }
+    if (!signedIn) {
+      toast.error("Please sign in with Google or verify your email first");
+      return;
+    }
+    if (!phoneVerified) {
+      toast.error("Please verify your mobile number before checkout");
       return;
     }
 
@@ -325,20 +342,64 @@ export default function CheckoutPage() {
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
       <h1 className="font-display text-4xl">Checkout</h1>
       {!signedIn ? (
-        <p className="mt-2 text-sm text-muted">
-          Checking out as guest — or{" "}
-          <button
-            type="button"
-            className="text-sage underline underline-offset-2"
-            onClick={() => signIn("google", { callbackUrl: "/checkout" })}
-          >
-            sign in with Google
-          </button>{" "}
-          to track orders easily.
-        </p>
+        <div className="mt-4 space-y-3 rounded-lg border border-border bg-cream p-4">
+          <p className="text-sm text-muted">
+            Verify your identity to place an order — Google sign-in, or email OTP then mobile
+            verification.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={() => signIn("google", { callbackUrl: "/checkout" })}
+            >
+              Continue with Google
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEmailModalOpen(true)}
+            >
+              Verify email with OTP
+            </Button>
+          </div>
+        </div>
       ) : (
         <p className="mt-2 text-sm text-muted">Signed in as {session?.user?.email}</p>
       )}
+
+      {signedIn && !phoneVerified ? (
+        <div className="mt-6 max-w-lg">
+          <h2 className="font-display text-xl">Verify mobile</h2>
+          <p className="mt-1 text-sm text-muted">
+            We email a 4-digit code to your verified inbox before you can pay.
+          </p>
+          <div className="mt-3">
+            <PhoneVerify
+              compact
+              initialPhone={form.phone}
+              initiallyVerified={false}
+              emailHint={session?.user?.email || form.email || undefined}
+              onVerified={(phone) => {
+                setForm((f) => ({ ...f, phone }));
+                setPhoneVerified(true);
+              }}
+              onCleared={() => setPhoneVerified(false)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <EmailVerifyModal
+        open={emailModalOpen}
+        email={form.email}
+        name={form.name}
+        onClose={() => setEmailModalOpen(false)}
+        onVerified={(verifiedEmail) => {
+          setForm((f) => ({ ...f, email: verifiedEmail }));
+          setEmailModalOpen(false);
+          window.setTimeout(() => window.location.reload(), 400);
+        }}
+      />
 
       <div className="mt-8 grid gap-10 lg:grid-cols-2">
         <form onSubmit={onSubmit} className="space-y-4">
@@ -350,8 +411,15 @@ export default function CheckoutPage() {
               required
               className="mt-1.5"
               value={form.email}
+              disabled={signedIn}
+              readOnly={signedIn}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
+            {!signedIn ? (
+              <p className="mt-1 text-xs text-muted">
+                Use this address for email OTP, or continue with Google.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="name">Full name</Label>
@@ -376,9 +444,15 @@ export default function CheckoutPage() {
               placeholder="10-digit mobile"
               className="mt-1.5"
               value={form.phone}
+              disabled={!signedIn || !phoneVerified}
+              readOnly={phoneVerified}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
             />
-            <p className="mt-1 text-xs text-muted">10-digit Indian mobile (e.g. 9876543210)</p>
+            <p className="mt-1 text-xs text-muted">
+              {phoneVerified
+                ? "Locked to your verified mobile."
+                : "Verify your mobile above to continue."}
+            </p>
           </div>
           <div>
             <Label htmlFor="address">Address</Label>
@@ -507,7 +581,13 @@ export default function CheckoutPage() {
             type="submit"
             variant="terracotta"
             className="w-full"
-            disabled={loading || !items.length || pincodeStatus.available === false}
+            disabled={
+              loading ||
+              !items.length ||
+              !signedIn ||
+              !phoneVerified ||
+              pincodeStatus.available === false
+            }
           >
             {loading ? "Processing..." : `Pay ${formatINR(payableTotal)}`}
           </Button>

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AdminFormActions } from "@/components/admin/admin-form";
 import { FieldLabel, RequiredHint } from "@/components/admin/field-label";
 import { ImageUploadField } from "@/components/admin/image-upload-field";
-import { upsertProduct } from "@/lib/actions/admin";
+import { upsertProduct } from "@/lib/actions/products";
 import { parseJsonArray } from "@/lib/utils";
 import { DEFAULT_CATEGORY_NAMES } from "@/lib/constants/categories";
 import { useCan } from "@/components/admin/admin-permissions";
@@ -87,18 +87,45 @@ export function ProductForm({
         setSaving(true);
         try {
           const fd = new FormData(e.currentTarget);
-          fd.set("images", imageUrls);
-          await upsertProduct(fd);
+          const str = (name: string) => String(fd.get(name) || "");
+          const num = (name: string) => Number(str(name) || 0);
+          const result = await upsertProduct({
+            id: product?.id,
+            title: str("title"),
+            brand: str("brand"),
+            category: str("category"),
+            description: str("description"),
+            volume: str("volume"),
+            mrp: num("mrp"),
+            sellingPrice: num("sellingPrice"),
+            stock: num("stock"),
+            sku: str("sku"),
+            ingredients: str("ingredients"),
+            usage: str("usage"),
+            benefits: str("benefits"),
+            images: imageUrls,
+            stockNote: str("stockNote") || undefined,
+            metaTitle: str("metaTitle") || undefined,
+            metaDescription: str("metaDescription") || undefined,
+            lowStockThreshold: str("lowStockThreshold")
+              ? Number(str("lowStockThreshold"))
+              : undefined,
+          });
+          if (!result.ok) {
+            toast.error(result.error);
+            return;
+          }
           toast.success(product?.id ? "Product updated successfully" : "Product created successfully");
           router.push("/admin/products");
+          router.refresh();
         } catch (err) {
           const msg =
-            err instanceof Error
+            err instanceof Error &&
+            err.message &&
+            !/Server Components render|digest/i.test(err.message)
               ? err.message
-              : typeof err === "object" && err && "digest" in err
-                ? "Save failed — please refresh and try again"
-                : "Could not save product";
-          toast.error(msg === "Unauthorized" ? "You do not have permission to edit products" : msg);
+              : "Could not save product — please refresh and try again";
+          toast.error(msg);
         } finally {
           setSaving(false);
         }
@@ -295,7 +322,7 @@ export function ProductForm({
         onUploadingChange={setUploading}
       />
 
-      <AdminFormActions className="flex flex-col gap-2 sm:flex-row">
+      <AdminFormActions className="flex flex-col gap-3 sm:flex-row sm:items-center">
         {canEdit ? (
           <Button type="submit" className="w-full sm:w-auto" disabled={uploading || saving}>
             {saving ? "Saving…" : "Save product"}

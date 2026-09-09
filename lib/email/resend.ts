@@ -1,9 +1,12 @@
-import { getAdminCc, getEmailProvider } from "@/lib/email/config";
+import { getAdminCc, getEmailProvider, emailConfigured, smtpConfigured } from "@/lib/email/config";
 import { sendViaMailChannels } from "@/lib/email/mailchannels";
 import { sendViaResend } from "@/lib/email/resend-client";
+import { sendViaSmtp } from "@/lib/email/smtp";
 
 export { getAdminCc, getEmailFrom, emailConfigured } from "@/lib/email/config";
 export { getResend } from "@/lib/email/resend-client";
+
+type ProviderAttempt = "smtp" | "mailchannels" | "resend";
 
 async function logEmailFailure(
   action: string,
@@ -13,6 +16,19 @@ async function logEmailFailure(
   void import("@/lib/logging/system-log").then(({ logError }) =>
     logError({ category: "email", action, message, meta })
   );
+}
+
+function buildAttemptOrder(provider: ReturnType<typeof getEmailProvider>): ProviderAttempt[] {
+  if (provider === "smtp") return ["smtp"];
+  if (provider === "mailchannels") return ["mailchannels"];
+  if (provider === "resend") return ["resend"];
+
+  // auto: SMTP first when configured, then MailChannels / Resend
+  const rest: ProviderAttempt[] = process.env.MAILCHANNELS_API_KEY?.trim()
+    ? ["mailchannels", "resend"]
+    : ["resend", "mailchannels"];
+  if (smtpConfigured()) return ["smtp", ...rest];
+  return rest;
 }
 
 export async function sendTransactionalEmail(input: {
@@ -27,42 +43,27 @@ export async function sendTransactionalEmail(input: {
     return { skipped: true as const };
   }
 
-  const cc = getAdminCc(to);
-  const payload = { ...input, to, cc };
-  const provider = getEmailProvider();
-
-  const tryResend = provider === "resend" || provider === "auto";
-  const tryMailChannels = provider === "mailchannels" || provider === "auto";
-
-  if (!tryResend && !tryMailChannels) {
-    console.info("[email] skipped (no provider configured):", input.subject);
-    return { skipped: true as const };
-  }
-
-  if (!process.env.RESEND_API_KEY?.trim() && !process.env.MAILCHANNELS_API_KEY?.trim()) {
+  if (!emailConfigured()) {
     console.info(
-      "[email] skipped (set RESEND_API_KEY or MAILCHANNELS_API_KEY):",
+      "[email] skipped (set SMTP_* or RESEND_API_KEY / MAILCHANNELS_API_KEY):",
       input.subject
     );
     return { skipped: true as const };
   }
 
-  const attempts: Array<"mailchannels" | "resend"> =
-    provider === "mailchannels"
-      ? ["mailchannels"]
-      : provider === "resend"
-        ? ["resend"]
-        : process.env.MAILCHANNELS_API_KEY?.trim()
-          ? ["mailchannels", "resend"]
-          : ["resend", "mailchannels"];
+  const cc = getAdminCc(to);
+  const payload = { ...input, to, cc };
+  const attempts = buildAttemptOrder(getEmailProvider());
 
   let lastError = "No email provider available";
 
   for (const name of attempts) {
     const result =
-      name === "mailchannels"
-        ? await sendViaMailChannels(payload)
-        : await sendViaResend(payload);
+      name === "smtp"
+        ? await sendViaSmtp(payload)
+        : name === "mailchannels"
+          ? await sendViaMailChannels(payload)
+          : await sendViaResend(payload);
 
     if (result === null) continue;
     if (result.ok) return result;

@@ -53,6 +53,8 @@ function mapShipment(row: Record<string, unknown> | null): Shipment | null {
   return {
     id: String(row.id),
     orderId: String(row.orderId),
+    shippingPartner:
+      row.shippingPartner != null ? String(row.shippingPartner) : null,
     shiprocketOrderId:
       row.shiprocketOrderId != null ? String(row.shiprocketOrderId) : null,
     shipmentId: row.shipmentId != null ? String(row.shipmentId) : null,
@@ -461,6 +463,7 @@ export async function upsertShipmentD1(
       where: { orderId },
       create: {
         orderId,
+        shippingPartner: data.shippingPartner ?? null,
         shiprocketOrderId: data.shiprocketOrderId ?? null,
         shipmentId: data.shipmentId ?? null,
         awbCode: data.awbCode ?? null,
@@ -469,6 +472,7 @@ export async function upsertShipmentD1(
         trackingUrl: data.trackingUrl ?? null,
       },
       update: {
+        shippingPartner: data.shippingPartner,
         shiprocketOrderId: data.shiprocketOrderId,
         shipmentId: data.shipmentId,
         awbCode: data.awbCode,
@@ -485,36 +489,93 @@ export async function upsertShipmentD1(
     .bind(orderId)
     .first();
   if (existing) {
-    await d1
-      .prepare(
-        `UPDATE Shipment SET shiprocketOrderId = ?, shipmentId = ?, awbCode = ?, courierName = ?, trackingStatus = ?, trackingUrl = ? WHERE orderId = ?`
-      )
-      .bind(
-        data.shiprocketOrderId ?? null,
-        data.shipmentId ?? null,
-        data.awbCode ?? null,
-        data.courierName ?? null,
-        data.trackingStatus ?? null,
-        data.trackingUrl ?? null,
-        orderId
-      )
-      .run();
+    try {
+      await d1
+        .prepare(
+          `UPDATE Shipment SET shippingPartner = ?, shiprocketOrderId = ?, shipmentId = ?, awbCode = ?, courierName = ?, trackingStatus = ?, trackingUrl = ? WHERE orderId = ?`
+        )
+        .bind(
+          data.shippingPartner ?? null,
+          data.shiprocketOrderId ?? null,
+          data.shipmentId ?? null,
+          data.awbCode ?? null,
+          data.courierName ?? null,
+          data.trackingStatus ?? null,
+          data.trackingUrl ?? null,
+          orderId
+        )
+        .run();
+    } catch {
+      // Column may be missing before migration 0009
+      await d1
+        .prepare(
+          `UPDATE Shipment SET shiprocketOrderId = ?, shipmentId = ?, awbCode = ?, courierName = ?, trackingStatus = ?, trackingUrl = ? WHERE orderId = ?`
+        )
+        .bind(
+          data.shiprocketOrderId ?? null,
+          data.shipmentId ?? null,
+          data.awbCode ?? null,
+          data.courierName ?? null,
+          data.trackingStatus ?? null,
+          data.trackingUrl ?? null,
+          orderId
+        )
+        .run();
+    }
   } else {
-    await d1
-      .prepare(
-        `INSERT INTO Shipment (id, orderId, shiprocketOrderId, shipmentId, awbCode, courierName, trackingStatus, trackingUrl)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        cuidLike(),
-        orderId,
-        data.shiprocketOrderId ?? null,
-        data.shipmentId ?? null,
-        data.awbCode ?? null,
-        data.courierName ?? null,
-        data.trackingStatus ?? null,
-        data.trackingUrl ?? null
-      )
-      .run();
+    try {
+      await d1
+        .prepare(
+          `INSERT INTO Shipment (id, orderId, shippingPartner, shiprocketOrderId, shipmentId, awbCode, courierName, trackingStatus, trackingUrl)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          cuidLike(),
+          orderId,
+          data.shippingPartner ?? null,
+          data.shiprocketOrderId ?? null,
+          data.shipmentId ?? null,
+          data.awbCode ?? null,
+          data.courierName ?? null,
+          data.trackingStatus ?? null,
+          data.trackingUrl ?? null
+        )
+        .run();
+    } catch {
+      await d1
+        .prepare(
+          `INSERT INTO Shipment (id, orderId, shiprocketOrderId, shipmentId, awbCode, courierName, trackingStatus, trackingUrl)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          cuidLike(),
+          orderId,
+          data.shiprocketOrderId ?? null,
+          data.shipmentId ?? null,
+          data.awbCode ?? null,
+          data.courierName ?? null,
+          data.trackingStatus ?? null,
+          data.trackingUrl ?? null
+        )
+        .run();
+    }
   }
+}
+
+export async function updateOrderStatusDb(orderId: string, orderStatus: string) {
+  const db = await getD1();
+  if (!db) {
+    const { getPrismaAsync } = await import("@/lib/prisma");
+    const prisma = await getPrismaAsync();
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { orderStatus },
+    });
+    return;
+  }
+  const d1 = asD1(db);
+  await d1
+    .prepare(`UPDATE "Order" SET orderStatus = ?, updatedAt = ? WHERE id = ?`)
+    .bind(orderStatus, sqlNow(), orderId)
+    .run();
 }

@@ -78,7 +78,13 @@ export default async function AdminOrdersPage({
               cancelRequested={o.orderStatus === "CANCEL_REQUESTED"}
               cancelReason={o.cancelReason}
               hasShipment={Boolean(o.shipment)}
+              hasAwb={Boolean(o.shipment?.awbCode)}
+              canShip={
+                o.paymentStatus === "PAID" &&
+                !["CANCELLED", "REFUNDED", "CANCEL_REQUESTED"].includes(o.orderStatus)
+              }
               canRefund={o.paymentStatus === "PAID"}
+              trackingUrl={o.shipment?.trackingUrl}
             />
           </div>
         ))}

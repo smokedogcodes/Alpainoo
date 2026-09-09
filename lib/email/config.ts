@@ -1,14 +1,22 @@
 /** Shared email configuration and provider selection. */
 
-export type EmailProviderName = "resend" | "mailchannels" | "auto";
+export type EmailProviderName = "smtp" | "resend" | "mailchannels" | "auto";
+
+export function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST?.trim() && process.env.SMTP_USER?.trim());
+}
 
 export function getEmailProvider(): EmailProviderName {
   const raw = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
-  if (raw === "resend" || raw === "mailchannels") return raw;
+  if (raw === "smtp" || raw === "resend" || raw === "mailchannels") return raw;
   return "auto";
 }
 
 export function getEmailFrom() {
+  const name = process.env.SMTP_FROM_NAME?.trim();
+  const email = process.env.SMTP_FROM_EMAIL?.trim();
+  if (name && email) return `${name} <${email}>`;
+  if (email) return `Alpainoo <${email}>`;
   return (
     process.env.EMAIL_FROM?.trim() ||
     "Alpainoo <onboarding@resend.dev>"
@@ -40,6 +48,8 @@ export function getAdminCc(customerEmail?: string | null) {
 
 export function emailConfigured() {
   return Boolean(
-    process.env.RESEND_API_KEY?.trim() || process.env.MAILCHANNELS_API_KEY?.trim()
+    smtpConfigured() ||
+      process.env.RESEND_API_KEY?.trim() ||
+      process.env.MAILCHANNELS_API_KEY?.trim()
   );
 }

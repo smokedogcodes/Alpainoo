@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { slugify } from "@/lib/utils";
 import { requireAdmin, requirePermission } from "@/lib/auth/admin";
 import { OrderStatusSchema, sanitizeImageUrl } from "@/lib/validation";
@@ -12,299 +11,6 @@ import { findUserById, updateUserAccess } from "@/lib/db/users";
 import { deleteBlogPost, upsertBlogPost } from "@/lib/db/blog";
 import type { AssignableRole, PermissionMatrix } from "@/lib/auth/permissions";
 import { serializePermissionMatrix } from "@/lib/auth/permissions";
-
-const ProductFormSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().trim().min(2).max(200),
-  brand: z.string().trim().max(100).optional(),
-  category: z.string().trim().min(1).max(100),
-  description: z.string().trim().max(10000).optional(),
-  volume: z.string().trim().max(50).optional(),
-  mrp: z.number().positive().max(1_000_000),
-  sellingPrice: z.number().positive().max(1_000_000),
-  stock: z.number().int().min(0).max(1_000_000),
-  sku: z.string().trim().max(64).optional(),
-  ingredients: z.string().max(5000).optional(),
-  usage: z.string().max(5000).optional(),
-  benefits: z.array(z.string().max(200)).max(50),
-  images: z.array(z.string().max(500)).max(20),
-  stockNote: z.string().max(200).optional(),
-  metaTitle: z.string().trim().max(120).optional(),
-  metaDescription: z.string().trim().max(320).optional(),
-  lowStockThreshold: z.number().int().min(0).max(10_000).optional(),
-});
-
-export async function upsertProduct(formData: FormData) {
-  await requirePermission("products", "edit");
-
-  const raw = {
-    id: String(formData.get("id") || "") || undefined,
-    title: String(formData.get("title") || ""),
-    brand: String(formData.get("brand") || ""),
-    category: String(formData.get("category") || ""),
-    description: String(formData.get("description") || ""),
-    volume: String(formData.get("volume") || ""),
-    mrp: Number(formData.get("mrp") || 0),
-    sellingPrice: Number(formData.get("sellingPrice") || 0),
-    stock: Number(formData.get("stock") || 0),
-    sku: String(formData.get("sku") || ""),
-    ingredients: String(formData.get("ingredients") || ""),
-    usage: String(formData.get("usage") || ""),
-    benefits: String(formData.get("benefits") || "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean),
-    images: String(formData.get("images") || "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(sanitizeImageUrl)
-      .filter(Boolean),
-    stockNote: String(formData.get("stockNote") || "") || undefined,
-    metaTitle: String(formData.get("metaTitle") || "").trim() || undefined,
-    metaDescription: String(formData.get("metaDescription") || "").trim() || undefined,
-    lowStockThreshold: formData.get("lowStockThreshold")
-      ? Number(formData.get("lowStockThreshold"))
-      : undefined,
-  };
-
-  const parsed = ProductFormSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Invalid product");
-
-  const {
-    id,
-    mrp,
-    sellingPrice,
-    stock,
-    title,
-    images,
-    stockNote,
-    metaTitle,
-    metaDescription,
-    lowStockThreshold,
-    ...rest
-  } = parsed.data;
-  if (sellingPrice > mrp) throw new Error("Selling price cannot exceed MRP");
-
-  const discount = mrp > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
-  const slug = slugify(title);
-  const benefitsJson = JSON.stringify(rest.benefits);
-  const imagesJson = JSON.stringify(images.length ? images : ["/products/placeholder.jpg"]);
-  const metaTitleVal = metaTitle || null;
-  const metaDescriptionVal = metaDescription || null;
-  const threshold = lowStockThreshold ?? 5;
-  const volume = rest.volume || null;
-  const ingredients = rest.ingredients || null;
-  const usage = rest.usage || null;
-  const brand = (rest.brand || "").trim() || "Alpainoo";
-  const description = (rest.description || "").trim() || title;
-  let sku = (rest.sku || "").trim();
-
-  let productId = id || cuidLike();
-  if (!sku) {
-    sku = `ALP-${productId.replace(/^c/, "").slice(0, 10).toUpperCase()}`;
-  }
-
-  // Resolve category master id when name matches
-  let categoryId: string | null = null;
-
-  const db = await getD1();
-  if (db) {
-    const d1 = asD1(db);
-    const now = sqlNow();
-    try {
-      const catRow = await d1
-        .prepare(`SELECT id FROM Category WHERE name = ? OR slug = ? LIMIT 1`)
-        .bind(rest.category, slugify(rest.category))
-        .first();
-      if (catRow) categoryId = String((catRow as { id: string }).id);
-    } catch (err) {
-      console.warn("[upsertProduct] category lookup failed:", err);
-    }
-
-    try {
-    if (id) {
-      const prev = await d1
-        .prepare(`SELECT stock, sku FROM Product WHERE id = ? LIMIT 1`)
-        .bind(id)
-        .first();
-      if (!prev) throw new Error("Product not found");
-      const prevStock = Number((prev as { stock: number }).stock);
-      // Keep existing SKU if form left blank on edit
-      if (!(rest.sku || "").trim()) {
-        sku = String((prev as { sku: string }).sku);
-      }
-      await d1
-        .prepare(
-          `UPDATE Product SET title = ?, slug = ?, description = ?, brand = ?, volume = ?, mrp = ?, sellingPrice = ?,
-           discount = ?, sku = ?, stock = ?, category = ?, categoryId = ?, benefits = ?, ingredients = ?, usage = ?, images = ?,
-           metaTitle = ?, metaDescription = ?, lowStockThreshold = ?, updatedAt = ?
-           WHERE id = ?`
-        )
-        .bind(
-          title,
-          slug,
-          description,
-          brand,
-          volume,
-          mrp,
-          sellingPrice,
-          discount,
-          sku,
-          stock,
-          rest.category,
-          categoryId,
-          benefitsJson,
-          ingredients,
-          usage,
-          imagesJson,
-          metaTitleVal,
-          metaDescriptionVal,
-          threshold,
-          now,
-          id
-        )
-        .run();
-      if (prevStock !== stock) {
-        await d1
-          .prepare(
-            `INSERT INTO StockLog (id, productId, change, note, createdAt) VALUES (?, ?, ?, ?, ?)`
-          )
-          .bind(cuidLike(), id, stock - prevStock, stockNote || "Manual stock update", now)
-          .run();
-      }
-      productId = id;
-    } else {
-      // Ensure unique SKU
-      const clash = await d1
-        .prepare(`SELECT id FROM Product WHERE sku = ? LIMIT 1`)
-        .bind(sku)
-        .first();
-      if (clash) sku = `ALP-${cuidLike().slice(1, 11).toUpperCase()}`;
-
-      await d1
-        .prepare(
-          `INSERT INTO Product (id, title, slug, description, brand, volume, mrp, sellingPrice, discount, sku, stock,
-           category, categoryId, benefits, ingredients, usage, images, rating, reviewCount, isHidden, metaTitle, metaDescription,
-           lowStockThreshold, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4.5, 0, 0, ?, ?, ?, ?, ?)`
-        )
-        .bind(
-          productId,
-          title,
-          slug,
-          description,
-          brand,
-          volume,
-          mrp,
-          sellingPrice,
-          discount,
-          sku,
-          stock,
-          rest.category,
-          categoryId,
-          benefitsJson,
-          ingredients,
-          usage,
-          imagesJson,
-          metaTitleVal,
-          metaDescriptionVal,
-          threshold,
-          now,
-          now
-        )
-        .run();
-      await d1
-        .prepare(
-          `INSERT INTO StockLog (id, productId, change, note, createdAt) VALUES (?, ?, ?, ?, ?)`
-        )
-        .bind(cuidLike(), productId, stock, "Initial stock", now)
-        .run();
-    }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[upsertProduct] D1 write failed:", msg);
-      if (/unique|UNIQUE/i.test(msg)) {
-        throw new Error("A product with this title or SKU already exists");
-      }
-      if (msg === "Product not found") throw err;
-      throw new Error("Could not save product. Please try again.");
-    }
-  } else {
-    const { getPrismaAsync } = await import("@/lib/prisma");
-    const prisma = await getPrismaAsync();
-    const cat = await prisma.category.findFirst({
-      where: { OR: [{ name: rest.category }, { slug: slugify(rest.category) }] },
-    });
-    categoryId = cat?.id ?? null;
-
-    const data = {
-      title,
-      slug,
-      brand,
-      category: rest.category,
-      categoryId,
-      description,
-      volume,
-      mrp,
-      sellingPrice,
-      discount,
-      stock,
-      sku,
-      benefits: benefitsJson,
-      images: imagesJson,
-      ingredients,
-      usage,
-      metaTitle: metaTitleVal,
-      metaDescription: metaDescriptionVal,
-      ...(lowStockThreshold != null ? { lowStockThreshold } : {}),
-    };
-
-    if (id) {
-      const prev = await prisma.product.findUnique({ where: { id } });
-      if (prev && !(rest.sku || "").trim()) data.sku = prev.sku;
-      await prisma.product.update({ where: { id }, data });
-      if (prev && prev.stock !== stock) {
-        await prisma.stockLog.create({
-          data: {
-            productId: id,
-            change: stock - prev.stock,
-            note: stockNote || "Manual stock update",
-          },
-        });
-      }
-      productId = id;
-    } else {
-      const created = await prisma.product.create({ data });
-      productId = created.id;
-      await prisma.stockLog.create({
-        data: { productId: created.id, change: stock, note: "Initial stock" },
-      });
-    }
-  }
-
-  revalidatePath("/admin/products");
-  revalidatePath("/products");
-
-  void import("@/lib/logging/system-log").then(({ logSuccess }) =>
-    logSuccess({
-      category: "admin",
-      action: id ? "PRODUCT_UPDATED" : "PRODUCT_CREATED",
-      message: id ? `Product updated: ${title}` : `Product created: ${title}`,
-      entityType: "Product",
-      entityId: productId,
-      meta: { sku, stock },
-    })
-  );
-  void import("@/lib/logging/db-audit").then(({ writeDbAudit }) =>
-    writeDbAudit({
-      tableName: "Product",
-      operation: id ? "UPDATE" : "INSERT",
-      rowId: productId,
-      newData: { id: productId, title, stock, sku },
-    })
-  );
-}
 
 export async function toggleHideProduct(id: string, isHidden: boolean) {
   await requirePermission("products", "edit");
@@ -838,4 +544,40 @@ export async function syncShipmentTracking(orderId: string) {
   revalidatePath("/admin/orders");
   revalidatePath(`/orders/${orderId}`);
   return track;
+}
+
+export async function shipWithShiprocket(orderId: string): Promise<
+  | {
+      ok: true;
+      shipmentId: string | null;
+      awbCode: string | null;
+      trackingUrl: string | null;
+      orderStatus: string;
+      warning?: string | null;
+    }
+  | { ok: false; error: string }
+> {
+  try {
+    await requirePermission("orders", "edit");
+    const { shipOrderWithShiprocket } = await import("@/lib/fulfillment-shiprocket");
+    const result = await shipOrderWithShiprocket(orderId, { requireCredentials: true });
+    revalidatePath("/admin/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/orders");
+    return {
+      ok: true,
+      shipmentId: result.shipmentId,
+      awbCode: result.awbCode,
+      trackingUrl: result.trackingUrl,
+      orderStatus: result.orderStatus,
+      warning: result.warning ?? null,
+    };
+  } catch (err) {
+    const message =
+      err instanceof Error && err.message
+        ? err.message
+        : "Could not ship with Shiprocket";
+    // Never throw — production digests Server Action errors into a generic RSC message
+    return { ok: false, error: message };
+  }
 }

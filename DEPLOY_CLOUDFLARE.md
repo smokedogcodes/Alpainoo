@@ -83,13 +83,25 @@ npx wrangler secret put NEXT_PUBLIC_APP_URL
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put EMAIL_FROM
 npx wrangler secret put EMAIL_PROVIDER
+npx wrangler secret put SMTP_HOST
+npx wrangler secret put SMTP_PORT
+npx wrangler secret put SMTP_USER
+npx wrangler secret put SMTP_PASS
+npx wrangler secret put SMTP_FROM_NAME
+npx wrangler secret put SMTP_FROM_EMAIL
+npx wrangler secret put SMTP_SECURE
+npx wrangler secret put OTP_PEPPER
 npx wrangler secret put ADMIN_EMAIL
 npx wrangler secret put RAZORPAY_KEY_ID
 npx wrangler secret put RAZORPAY_KEY_SECRET
 npx wrangler secret put RAZORPAY_WEBHOOK_SECRET
 npx wrangler secret put NEXT_PUBLIC_RAZORPAY_KEY_ID
-npx wrangler secret put SHIPROCKET_EMAIL
-npx wrangler secret put SHIPROCKET_PASSWORD
+npx wrangler secret put SHIPROCKET_API_EMAIL
+npx wrangler secret put SHIPROCKET_API_PASSWORD
+npx wrangler secret put SHIPROCKET_PICKUP_LOCATION
+# Legacy aliases still supported if set instead:
+# npx wrangler secret put SHIPROCKET_EMAIL
+# npx wrangler secret put SHIPROCKET_PASSWORD
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put WHATSAPP_TOKEN
 npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
@@ -115,23 +127,42 @@ https://alpainoo.<account>.workers.dev/api/auth/callback/google
 
 ---
 
-## 4. Email (order notifications)
+## 4. Email (order notifications + phone OTP)
 
 | Service | Role |
 |---------|------|
+| Gmail SMTP | Preferred send path when `SMTP_*` set (orders, tickets, phone OTP) |
+| Resend / MailChannels | Fallback if SMTP unset or fails on Workers |
 | Cloudflare Email Routing | Receive/forward only |
-| Resend (recommended) | Send ~100/day free — add DNS in Cloudflare |
-| MailChannels | Send 100/day free |
 
 ```env
 EMAIL_PROVIDER=auto
-EMAIL_FROM="Alpainoo <orders@yourdomain.com>"
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=app-password
+SMTP_FROM_NAME=Alpainoo
+SMTP_FROM_EMAIL=you@gmail.com
+EMAIL_FROM="Alpainoo <you@gmail.com>"
 RESEND_API_KEY=re_...
+OTP_PEPPER=
 ```
 
 ```bash
 npm run test:email -- you@example.com
 ```
+
+### Phone OTP checklist
+
+1. Configure Gmail app password + `SMTP_*` (and optional Resend fallback).
+2. `npm run test:email -- you@example.com` — confirm SMTP (or fallback) works.
+3. Sign in with Google → Account → send OTP → code arrives at Google email.
+4. Enter 4-digit code → orbit animation → green verified tile.
+5. Wrong OTP: no green; retry works. `prefers-reduced-motion`: skip orbit.
+6. Change phone → must re-verify. Address phone locked to verified number.
+7. Checkout blocked until verified; succeeds after.
+8. Confirm OTP codes and `SMTP_PASS` never appear in logs.
+9. Apply D1 migration `prisma/migrations/0011_phone_verification.sql` on deploy.
 
 ---
 

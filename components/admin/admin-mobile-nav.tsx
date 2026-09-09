@@ -37,23 +37,23 @@ import { useAdminPermissions } from "@/components/admin/admin-permissions";
 import { can, type AdminScreen } from "@/lib/auth/permissions";
 
 const links: { href: string; label: string; icon: LucideIcon; screen: AdminScreen }[] = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboard, screen: "overview" },
-  { href: "/admin/products", label: "Products", icon: Package, screen: "products" },
+  { href: "/admin/logs", label: "Audit logs", icon: ScrollText, screen: "logs" },
+  { href: "/admin/blog", label: "Blog", icon: FileText, screen: "blog" },
   { href: "/admin/categories", label: "Categories", icon: FolderTree, screen: "categories" },
   { href: "/admin/collections", label: "Collections", icon: Layers, screen: "collections" },
   { href: "/admin/coupons", label: "Coupons", icon: Tag, screen: "coupons" },
+  { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen, screen: "knowledge" },
+  { href: "/admin/marketing", label: "Marketing", icon: Megaphone, screen: "marketing" },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag, screen: "orders" },
+  { href: "/admin", label: "Overview", icon: LayoutDashboard, screen: "overview" },
+  { href: "/admin/products", label: "Products", icon: Package, screen: "products" },
+  { href: "/admin/reports", label: "Reports", icon: BarChart3, screen: "reports" },
   { href: "/admin/returns", label: "Returns", icon: RotateCcw, screen: "returns" },
   { href: "/admin/reviews", label: "Reviews", icon: Star, screen: "reviews" },
-  { href: "/admin/users", label: "Users", icon: Users, screen: "users" },
   { href: "/admin/roles", label: "Role defaults", icon: Shield, screen: "roles" },
-  { href: "/admin/marketing", label: "Marketing", icon: Megaphone, screen: "marketing" },
   { href: "/admin/seo", label: "SEO", icon: Search, screen: "seo" },
   { href: "/admin/tickets", label: "Tickets", icon: MessageSquare, screen: "tickets" },
-  { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen, screen: "knowledge" },
-  { href: "/admin/blog", label: "Blog", icon: FileText, screen: "blog" },
-  { href: "/admin/reports", label: "Reports", icon: BarChart3, screen: "reports" },
-  { href: "/admin/logs", label: "Audit logs", icon: ScrollText, screen: "logs" },
+  { href: "/admin/users", label: "Users", icon: Users, screen: "users" },
 ];
 
 export function AdminNavLinks({ closeOnNavigate = false }: { closeOnNavigate?: boolean }) {

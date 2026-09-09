@@ -2,11 +2,14 @@ import type { Coupon } from "@prisma/client";
 import { asD1, getD1, sqlNow, toBool, toDate } from "@/lib/db/d1";
 import { formatINR } from "@/lib/utils";
 
+export type CouponKind = "PERCENT" | "FIXED" | "PERCENT_CAPPED" | "FREE_SHIPPING";
+
 function mapCoupon(row: Record<string, unknown>): Coupon {
   return {
     id: String(row.id),
     code: String(row.code),
     description: row.description != null ? String(row.description) : null,
+    kind: row.kind != null ? String(row.kind) : null,
     percentOff: row.percentOff != null ? Number(row.percentOff) : null,
     amountOff: row.amountOff != null ? Number(row.amountOff) : null,
     minOrder: Number(row.minOrder ?? 0),
@@ -18,6 +21,20 @@ function mapCoupon(row: Record<string, unknown>): Coupon {
     createdAt: toDate(row.createdAt),
     updatedAt: toDate(row.updatedAt),
   };
+}
+
+/** Infer kind for older rows that predate the `kind` column. */
+export function resolveCouponKind(coupon: Coupon): CouponKind {
+  const k = (coupon.kind || "").toUpperCase();
+  if (k === "PERCENT" || k === "FIXED" || k === "PERCENT_CAPPED" || k === "FREE_SHIPPING") {
+    return k;
+  }
+  if (coupon.percentOff != null && coupon.percentOff > 0 && coupon.amountOff != null && coupon.amountOff > 0) {
+    return "PERCENT_CAPPED";
+  }
+  if (coupon.percentOff != null && coupon.percentOff > 0) return "PERCENT";
+  if (coupon.amountOff != null && coupon.amountOff > 0) return "FIXED";
+  return "FIXED";
 }
 
 export async function findCouponByCode(code: string): Promise<Coupon | null> {
@@ -38,10 +55,35 @@ export async function findCouponByCode(code: string): Promise<Coupon | null> {
   });
 }
 
-function couponLabel(coupon: Coupon) {
+export function couponLabel(coupon: Coupon) {
+  const kind = resolveCouponKind(coupon);
+  if (kind === "FREE_SHIPPING") return "Free shipping";
+  if (kind === "PERCENT_CAPPED" && coupon.percentOff != null && coupon.amountOff != null) {
+    return `${coupon.percentOff}% off up to ${formatINR(coupon.amountOff)}`;
+  }
+  if (kind === "PERCENT" && coupon.percentOff != null) return `${coupon.percentOff}% off`;
+  if (kind === "FIXED" && coupon.amountOff != null) return `${formatINR(coupon.amountOff)} off`;
   if (coupon.percentOff) return `${coupon.percentOff}% off`;
   if (coupon.amountOff) return `${formatINR(coupon.amountOff)} off`;
   return coupon.description || "Discount applied";
+}
+
+export function formatCouponDiscountCell(coupon: Coupon) {
+  const kind = resolveCouponKind(coupon);
+  const parts: string[] = [];
+  if (kind === "FREE_SHIPPING") parts.push("Free shipping");
+  else if (kind === "PERCENT_CAPPED") {
+    parts.push(`${coupon.percentOff}% up to ${formatINR(coupon.amountOff || 0)}`);
+  } else if (kind === "PERCENT") {
+    parts.push(`${coupon.percentOff}%`);
+  } else if (kind === "FIXED") {
+    parts.push(formatINR(coupon.amountOff || 0));
+  } else {
+    if (coupon.percentOff != null) parts.push(`${coupon.percentOff}%`);
+    if (coupon.amountOff != null) parts.push(formatINR(coupon.amountOff));
+  }
+  if (coupon.minOrder > 0) parts.push(`min ${formatINR(coupon.minOrder)}`);
+  return parts.join(" · ");
 }
 
 export type CouponApplyResult = {
@@ -49,6 +91,8 @@ export type CouponApplyResult = {
   discount: number;
   coupon: Coupon;
   label: string;
+  freeShipping: boolean;
+  kind: CouponKind;
 };
 
 /** Validates coupon against cart total and returns discounted amount. Throws with a user-facing reason. */
@@ -76,21 +120,54 @@ export async function applyCouponToTotal(code: string, total: number): Promise<C
       `Minimum order of ${formatINR(coupon.minOrder)} required to use this coupon (your cart is ${formatINR(total)})`
     );
   }
-  if (!coupon.percentOff && !coupon.amountOff) {
+
+  const kind = resolveCouponKind(coupon);
+
+  if (kind === "FREE_SHIPPING") {
+    return {
+      total,
+      discount: 0,
+      coupon,
+      label: couponLabel(coupon),
+      freeShipping: true,
+      kind,
+    };
+  }
+
+  let discount = 0;
+
+  if (kind === "PERCENT") {
+    if (!coupon.percentOff || coupon.percentOff <= 0) {
+      throw new Error("This coupon has no discount configured");
+    }
+    discount = total * (coupon.percentOff / 100);
+  } else if (kind === "FIXED") {
+    if (!coupon.amountOff || coupon.amountOff <= 0) {
+      throw new Error("This coupon has no discount configured");
+    }
+    discount = coupon.amountOff;
+  } else if (kind === "PERCENT_CAPPED") {
+    if (!coupon.percentOff || coupon.percentOff <= 0) {
+      throw new Error("This coupon has no discount configured");
+    }
+    const raw = total * (coupon.percentOff / 100);
+    const cap = coupon.amountOff != null && coupon.amountOff > 0 ? coupon.amountOff : raw;
+    discount = Math.min(raw, cap);
+  } else {
     throw new Error("This coupon has no discount configured");
   }
 
-  let next = total;
-  if (coupon.percentOff) next = total * (1 - coupon.percentOff / 100);
-  if (coupon.amountOff) next = Math.max(0, next - coupon.amountOff);
-  next = Math.round(next * 100) / 100;
-  const discount = Math.round((total - next) * 100) / 100;
+  discount = Math.min(discount, total);
+  discount = Math.round(discount * 100) / 100;
+  const next = Math.round((total - discount) * 100) / 100;
 
   return {
     total: next,
     discount,
     coupon,
     label: couponLabel(coupon),
+    freeShipping: false,
+    kind,
   };
 }
 

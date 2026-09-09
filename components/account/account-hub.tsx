@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { AdminForm } from "@/components/admin/admin-form";
 import { FieldLabel, RequiredHint } from "@/components/admin/field-label";
+import { PhoneVerify } from "@/components/account/phone-verify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,6 +19,7 @@ type Profile = {
   email: string;
   name: string;
   phone: string;
+  phoneVerifiedAt: string | null;
 };
 
 export function AccountHub({
@@ -27,64 +30,92 @@ export function AccountHub({
   addresses: SavedAddressRow[];
   userId: string;
 }) {
+  const router = useRouter();
+  const phoneVerified = Boolean(profile.phoneVerifiedAt && profile.phone);
+  const lockedPhone = phoneVerified ? profile.phone : "";
+
   return (
     <div className="grid gap-10 lg:grid-cols-2">
       <section className="space-y-4">
         <h2 className="font-display text-2xl">Profile</h2>
-        <AdminForm
-          action={saveProfile}
-          successMessage="Profile saved"
-          errorMessage="Could not save profile"
-          className="space-y-3 rounded-lg border border-border bg-cream p-4"
-        >
-          <RequiredHint />
-          <div>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              className="mt-1.5"
-              value={profile.email}
-              disabled
-              readOnly
+        <div className="space-y-4 rounded-lg border border-border bg-cream p-4">
+          <AdminForm
+            action={saveProfile}
+            successMessage="Profile saved"
+            errorMessage="Could not save profile"
+            className="space-y-3"
+          >
+            <RequiredHint />
+            <div>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                className="mt-1.5"
+                value={profile.email}
+                disabled
+                readOnly
+              />
+              <p className="mt-1 text-xs text-muted">Email comes from your Google sign-in.</p>
+            </div>
+            <div>
+              <FieldLabel htmlFor="name" required>
+                Name
+              </FieldLabel>
+              <Input
+                id="name"
+                name="name"
+                required
+                minLength={2}
+                className="mt-1.5"
+                defaultValue={profile.name}
+              />
+            </div>
+            <input type="hidden" name="phone" value={profile.phone || ""} />
+            <Button type="submit">Save profile</Button>
+          </AdminForm>
+
+          <div className="border-t border-border pt-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <h3 className="font-display text-lg">Phone</h3>
+              {phoneVerified ? (
+                <span className="rounded-sm bg-[color-mix(in_srgb,var(--sage)_18%,transparent)] px-2 py-0.5 text-xs text-sage">
+                  Verified
+                </span>
+              ) : (
+                <span className="rounded-sm bg-[color-mix(in_srgb,#8a857c_18%,transparent)] px-2 py-0.5 text-xs text-muted">
+                  Not verified
+                </span>
+              )}
+            </div>
+            <p className="mb-3 text-xs text-muted">
+              Verify your mobile to save addresses and place orders. We email a 4-digit code to{" "}
+              {profile.email || "your inbox"}.
+            </p>
+            <PhoneVerify
+              compact
+              initialPhone={profile.phone}
+              initiallyVerified={phoneVerified}
+              emailHint={profile.email}
+              onVerified={() => router.refresh()}
+              onCleared={() => router.refresh()}
             />
-            <p className="mt-1 text-xs text-muted">Email comes from your Google sign-in.</p>
           </div>
-          <div>
-            <FieldLabel htmlFor="name" required>
-              Name
-            </FieldLabel>
-            <Input
-              id="name"
-              name="name"
-              required
-              minLength={2}
-              className="mt-1.5"
-              defaultValue={profile.name}
-            />
-          </div>
-          <div>
-            <FieldLabel htmlFor="phone">Phone</FieldLabel>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              inputMode="numeric"
-              maxLength={13}
-              placeholder="10-digit mobile"
-              className="mt-1.5"
-              defaultValue={profile.phone}
-            />
-          </div>
-          <Button type="submit">Save profile</Button>
-        </AdminForm>
+        </div>
       </section>
 
       <section className="space-y-4">
         <h2 className="font-display text-2xl">Saved addresses</h2>
 
+        {!phoneVerified ? (
+          <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
+            Verify your phone in Profile first. New addresses will use that number automatically.
+          </p>
+        ) : null}
+
         <AdminForm
+          key={`add-address-${lockedPhone || "unverified"}`}
           action={saveAddress}
           successMessage="Address saved"
           errorMessage="Could not save address"
@@ -101,21 +132,47 @@ export function AccountHub({
             <FieldLabel htmlFor="addr-name" required>
               Full name
             </FieldLabel>
-            <Input id="addr-name" name="name" required minLength={2} className="mt-1.5" />
+            <Input
+              id="addr-name"
+              name="name"
+              required
+              minLength={2}
+              className="mt-1.5"
+              defaultValue={profile.name || ""}
+            />
           </div>
           <div>
             <FieldLabel htmlFor="addr-phone" required>
               Phone
             </FieldLabel>
-            <Input
-              id="addr-phone"
-              name="phone"
-              type="tel"
-              required
-              inputMode="numeric"
-              maxLength={13}
-              className="mt-1.5"
-            />
+            {phoneVerified ? (
+              <>
+                <Input
+                  id="addr-phone"
+                  type="tel"
+                  className="mt-1.5"
+                  value={lockedPhone}
+                  disabled
+                  readOnly
+                />
+                <input type="hidden" name="phone" value={lockedPhone} />
+                <p className="mt-1 text-xs text-muted">
+                  Prefills your verified mobile ({lockedPhone}) and stays locked.
+                </p>
+              </>
+            ) : (
+              <Input
+                id="addr-phone"
+                name="phone"
+                type="tel"
+                required
+                inputMode="numeric"
+                maxLength={13}
+                className="mt-1.5"
+                disabled
+                placeholder="Verify phone in Profile first"
+              />
+            )}
           </div>
           <div>
             <FieldLabel htmlFor="addr-line" required>
@@ -155,7 +212,9 @@ export function AccountHub({
             <input type="checkbox" name="isDefault" className="h-4 w-4 accent-[var(--sage)]" />
             Set as default for checkout
           </label>
-          <Button type="submit">Add address</Button>
+          <Button type="submit" disabled={!phoneVerified}>
+            Add address
+          </Button>
         </AdminForm>
 
         <ul className="space-y-3">
@@ -173,7 +232,7 @@ export function AccountHub({
                     ) : null}
                   </p>
                   <p className="mt-1 text-muted">
-                    {a.name} · {a.phone}
+                    {a.name} · {phoneVerified ? lockedPhone : a.phone}
                   </p>
                   <p className="mt-1">
                     {a.address}, {a.city}, {a.state} — {a.pincode}
@@ -218,7 +277,15 @@ export function AccountHub({
                   <input type="hidden" name="id" value={a.id} />
                   <Input name="label" defaultValue={a.label || ""} placeholder="Label" />
                   <Input name="name" defaultValue={a.name} required />
-                  <Input name="phone" defaultValue={a.phone} required />
+                  {phoneVerified ? (
+                    <>
+                      <Input value={lockedPhone} disabled readOnly />
+                      <input type="hidden" name="phone" value={lockedPhone} />
+                      <p className="text-xs text-muted">Uses your verified mobile.</p>
+                    </>
+                  ) : (
+                    <Input name="phone" defaultValue={a.phone} required />
+                  )}
                   <Input name="address" defaultValue={a.address} required />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Input name="city" defaultValue={a.city} required />
@@ -234,7 +301,7 @@ export function AccountHub({
                     />
                     Default for checkout
                   </label>
-                  <Button type="submit" size="sm">
+                  <Button type="submit" size="sm" disabled={!phoneVerified}>
                     Update
                   </Button>
                 </AdminForm>

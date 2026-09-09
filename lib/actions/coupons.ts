@@ -11,6 +11,7 @@ export type PreviewCouponResult =
       total: number;
       label: string;
       description: string | null;
+      freeShipping: boolean;
     }
   | { ok: false; error: string };
 
@@ -28,6 +29,7 @@ export async function previewCoupon(code: string, subtotal: number): Promise<Pre
       total: result.total,
       label: result.label,
       description: result.coupon.description,
+      freeShipping: result.freeShipping,
     };
   } catch (err) {
     return {

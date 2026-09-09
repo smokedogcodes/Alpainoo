@@ -2,9 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { listProducts } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
+import { ProductImage } from "@/components/product/product-image";
 import { Button } from "@/components/ui/button";
 import { HeroOrb } from "@/components/motion/hero-orb";
 import { FadeIn, Stagger, StaggerItem } from "@/components/motion/fade-in";
+import { parseJsonArray, formatINR } from "@/lib/utils";
 
 export default async function HomePage() {
   const [bestsellers, newest] = await Promise.all([
@@ -97,14 +99,7 @@ export default async function HomePage() {
               </h2>
               <ul className="mt-10 space-y-6">
                 {newest.map((p, i) => {
-                  const img = (() => {
-                    try {
-                      const parsed = JSON.parse(p.images);
-                      return Array.isArray(parsed) && parsed[0] ? parsed[0] : "/products/placeholder.jpg";
-                    } catch {
-                      return "/products/placeholder.jpg";
-                    }
-                  })();
+                  const img = parseJsonArray(p.images)[0] || "/products/placeholder.jpg";
                   return (
                     <FadeIn key={p.id} delay={0.05 * i} y={12}>
                       <li className="flex gap-4 border-b border-border/50 pb-6 transition-colors hover:border-sage/40">
@@ -112,32 +107,24 @@ export default async function HomePage() {
                           href={`/products/${p.slug}`}
                           className="relative h-20 w-20 shrink-0 overflow-hidden bg-surface-container transition-transform hover:scale-[1.03]"
                         >
-                          <Image
+                          <ProductImage
                             src={img}
                             alt={p.title}
                             fill
                             sizes="80px"
-                            quality={75}
-                            className="object-cover"
                           />
                         </Link>
-                        <div className="flex min-w-0 flex-1 flex-col justify-center">
+                        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
                           <Link
                             href={`/products/${p.slug}`}
                             className="font-display text-sm uppercase tracking-wide text-sage hover:underline"
                           >
                             {p.title}
                           </Link>
-                          <p className="mt-1 text-sm text-muted">
-                            {new Intl.NumberFormat("en-IN", {
-                              style: "currency",
-                              currency: "INR",
-                              maximumFractionDigits: 0,
-                            }).format(p.sellingPrice)}
-                          </p>
+                          <p className="text-sm text-muted">{formatINR(p.sellingPrice)}</p>
                           <Link
                             href={`/products/${p.slug}`}
-                            className="mt-2 text-xs uppercase tracking-widest underline underline-offset-4"
+                            className="mt-1 text-xs uppercase tracking-widest underline underline-offset-4"
                           >
                             Add to Cart
                           </Link>

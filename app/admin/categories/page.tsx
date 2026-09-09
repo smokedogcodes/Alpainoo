@@ -2,6 +2,7 @@ import { requireScreenView } from "@/lib/auth/require-screen";
 import Link from "next/link";
 import { listCategoriesDb, ensureDefaultCategoriesDb } from "@/lib/db/categories";
 import { createCategoryAction } from "@/lib/actions/admin-marketing";
+import { CategoryListItem } from "@/components/admin/category-list-item";
 import { AdminForm, AdminFormActions } from "@/components/admin/admin-form";
 import { FieldLabel, RequiredHint } from "@/components/admin/field-label";
 import { Button } from "@/components/ui/button";
@@ -66,16 +67,16 @@ export default async function AdminCategoriesPage() {
 
       <ul className="divide-y divide-border rounded-lg border border-border bg-white">
         {categories.map((c) => (
-          <li key={c.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-            <div>
-              <p className="font-medium">{c.name}</p>
-              <p className="text-xs text-muted">/{c.slug}</p>
-              {c.description ? (
-                <p className="mt-0.5 text-xs text-muted">{c.description}</p>
-              ) : null}
-            </div>
-            <span className="text-muted">#{c.sortOrder}</span>
-          </li>
+          <CategoryListItem
+            key={c.id}
+            category={{
+              id: c.id,
+              name: c.name,
+              slug: c.slug,
+              description: c.description,
+              sortOrder: c.sortOrder,
+            }}
+          />
         ))}
         {!categories.length && (
           <li className="px-4 py-3 text-sm text-muted">No categories yet.</li>

@@ -1,0 +1,12 @@
+-- Guest email OTP identity (checkout without Google first)
+CREATE TABLE IF NOT EXISTS EmailOtp (
+  id TEXT PRIMARY KEY NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  userId TEXT,
+  codeHash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expiresAt DATETIME NOT NULL,
+  lastSentAt DATETIME NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES User(id) ON DELETE SET NULL
+);

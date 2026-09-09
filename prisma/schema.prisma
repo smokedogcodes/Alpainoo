@@ -22,6 +22,8 @@ model User {
   roleExpiresAt DateTime?
   avatarUrl     String?
   phone         String?
+  /// Set when the profile phone passes email OTP verification.
+  phoneVerifiedAt DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   accounts      Account[]
@@ -33,6 +35,36 @@ model User {
   wishlistItems  WishlistItem[]
   returnRequests ReturnRequest[]
   savedAddresses SavedAddress[]
+  phoneOtps      PhoneOtp[]
+  emailOtps      EmailOtp[]
+}
+
+model PhoneOtp {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone      String
+  codeHash   String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  lastSentAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([userId])
+  @@index([phone])
+}
+
+/// Pre-auth email OTP (guest checkout identity). Unique per email.
+model EmailOtp {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  codeHash   String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  lastSentAt DateTime
+  createdAt  DateTime @default(now())
 }
 
 model SavedAddress {
@@ -182,6 +214,7 @@ model Shipment {
   id                String  @id @default(cuid())
   orderId           String  @unique
   order             Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shippingPartner   String?
   shiprocketOrderId String?
   shipmentId        String?
   awbCode           String?
@@ -455,6 +488,8 @@ model Coupon {
   id            String    @id @default(cuid())
   code          String    @unique
   description   String?
+  // PERCENT | FIXED | PERCENT_CAPPED | FREE_SHIPPING
+  kind          String?
   percentOff    Float?
   amountOff     Float?
   minOrder      Float     @default(0)

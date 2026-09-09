@@ -109,6 +109,8 @@ function mapShipment(row: Record<string, unknown> | null): Shipment | null {
   return {
     id: String(row.id),
     orderId: String(row.orderId),
+    shippingPartner:
+      row.shippingPartner != null ? String(row.shippingPartner) : null,
     shiprocketOrderId:
       row.shiprocketOrderId != null ? String(row.shiprocketOrderId) : null,
     shipmentId: row.shipmentId != null ? String(row.shipmentId) : null,

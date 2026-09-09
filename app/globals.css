@@ -68,8 +68,179 @@ h3,
   }
 }
 
+/* Phone OTP — 4-box orbit (CSS only) */
+.otp-orbit-root {
+  position: relative;
+  min-height: 4.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.otp-orbit-hub {
+  position: absolute;
+  left: 50%;
+  top: 1.35rem;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.otp-orbit-row {
+  display: flex;
+  gap: 0.65rem;
+  position: relative;
+  z-index: 1;
+}
+.otp-orbit-box {
+  width: 2.75rem;
+  height: 2.75rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: #fffaf3;
+  color: #2c2a26;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.otp-orbit-box.is-active {
+  border-color: color-mix(in srgb, var(--sage) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sage) 18%, transparent);
+}
+.otp-orbit-root.is-error .otp-orbit-box {
+  animation: otp-shake 0.35s ease;
+}
+.otp-orbit-root.is-verifying .otp-orbit-box {
+  opacity: 0.75;
+}
+.otp-orbit-verified-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7.5rem;
+  height: 2.75rem;
+  padding: 0 1rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, #2f6b4f 88%, #0a0a0a);
+  color: #f4faf6;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.otp-orbit-root.is-orbiting .otp-orbit-box {
+  pointer-events: none;
+  animation: otp-orbit-spin 1.25s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+  transform-origin: center center;
+}
+.otp-orbit-root.is-orbiting .otp-orbit-box-0 {
+  --orbit-x: 4.05rem;
+  animation-name: otp-orbit-spin-0;
+}
+.otp-orbit-root.is-orbiting .otp-orbit-box-1 {
+  --orbit-x: 1.35rem;
+  animation-name: otp-orbit-spin-1;
+}
+.otp-orbit-root.is-orbiting .otp-orbit-box-2 {
+  --orbit-x: -1.35rem;
+  animation-name: otp-orbit-spin-2;
+}
+.otp-orbit-root.is-orbiting .otp-orbit-box-3 {
+  --orbit-x: -4.05rem;
+  animation-name: otp-orbit-spin-3;
+}
+
+@keyframes otp-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes otp-orbit-spin-0 {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(var(--orbit-x)) rotate(90deg) scale(0.92);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translateX(calc(var(--orbit-x) * 0.35)) rotate(360deg) scale(0.7);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(calc(var(--orbit-x) * 0.08)) rotate(450deg) scale(0.2);
+    opacity: 0;
+  }
+}
+@keyframes otp-orbit-spin-1 {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(var(--orbit-x)) rotate(90deg) scale(0.92);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translateX(calc(var(--orbit-x) * 0.35)) rotate(360deg) scale(0.7);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(calc(var(--orbit-x) * 0.08)) rotate(450deg) scale(0.2);
+    opacity: 0;
+  }
+}
+@keyframes otp-orbit-spin-2 {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(var(--orbit-x)) rotate(-90deg) scale(0.92);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translateX(calc(var(--orbit-x) * 0.35)) rotate(-360deg) scale(0.7);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(calc(var(--orbit-x) * 0.08)) rotate(-450deg) scale(0.2);
+    opacity: 0;
+  }
+}
+@keyframes otp-orbit-spin-3 {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(var(--orbit-x)) rotate(-90deg) scale(0.92);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translateX(calc(var(--orbit-x) * 0.35)) rotate(-360deg) scale(0.7);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(calc(var(--orbit-x) * 0.08)) rotate(-450deg) scale(0.2);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-slow-zoom {
+    animation: none !important;
+  }
+  .otp-orbit-root.is-orbiting .otp-orbit-box,
+  .otp-orbit-root.is-error .otp-orbit-box {
     animation: none !important;
   }
 }

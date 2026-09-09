@@ -12,16 +12,22 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const image = await getStoredImage(id);
-  if (!image) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  try {
+    const image = await getStoredImage(id);
+    if (!image) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-  return new NextResponse(Buffer.from(image.bytes), {
-    headers: {
-      "Content-Type": image.mimeType,
-      "Cache-Control": "public, max-age=31536000, immutable",
-      "Content-Length": String(image.bytes.byteLength),
-    },
-  });
+    // Pass bytes as BodyInit (Workers accepts Uint8Array at runtime).
+    return new NextResponse(image.bytes as unknown as BodyInit, {
+      headers: {
+        "Content-Type": image.mimeType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Length": String(image.bytes.byteLength),
+      },
+    });
+  } catch (err) {
+    console.error("[api/media] failed:", err);
+    return NextResponse.json({ error: "Media error" }, { status: 500 });
+  }
 }
