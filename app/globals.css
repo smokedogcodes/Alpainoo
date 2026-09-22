@@ -245,6 +245,58 @@ h3,
   }
 }
 
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  .storefront-hero > .relative,
+  .collection-depth-layer > a,
+  .storefront-tilt > div {
+    transform-style: preserve-3d;
+  }
+
+  .storefront-tilt:hover {
+    will-change: transform;
+  }
+
+  .storefront-tilt > div {
+    transform: translateZ(12px);
+  }
+
+  .storefront-elevate {
+    transition: transform 220ms ease-out, box-shadow 220ms ease-out, background-color 150ms, border-color 150ms;
+  }
+
+  .storefront-elevate:not(:disabled):hover,
+  .storefront-elevate:not(:disabled):focus-visible {
+    transform: perspective(1200px) translateY(-2px) translateZ(8px);
+    box-shadow: 0 10px 26px -2px rgba(26, 64, 115, 0.08);
+  }
+
+  .storefront-elevate:not(:disabled):active {
+    transform: perspective(1200px) translateY(0) translateZ(0);
+    box-shadow: 0 4px 20px -2px rgba(26, 64, 115, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .storefront-hero *,
+  .storefront-tilt,
+  .storefront-tilt *,
+  .collection-depth-layer,
+  .collection-depth-layer *,
+  .storefront-elevate {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;

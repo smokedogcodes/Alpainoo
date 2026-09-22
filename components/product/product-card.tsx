@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { useCardTilt } from "@/hooks/use-storefront-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product/product-image";
@@ -32,6 +34,7 @@ export function ProductCard({
   const onSale = product.discount > 0;
   const cover = images[0] || "/products/placeholder.jpg";
   const editorial = variant === "editorial";
+  const tilt = useCardTilt(editorial);
 
   function add() {
     if (product.stock <= 0) {
@@ -50,7 +53,7 @@ export function ProductCard({
   }
 
   return (
-    <article className="group flex flex-col transition-transform duration-300 hover:-translate-y-1">
+    <motion.article {...tilt} className={cn("group flex flex-col", editorial ? "storefront-tilt" : "transition-transform duration-300 hover:-translate-y-1")}>
       <Link
         href={`/products/${product.slug}`}
         className={cn(
@@ -93,7 +96,7 @@ export function ProductCard({
         </div>
         <Button
           onClick={add}
-          className={cn("mt-auto w-full", editorial && "mt-3 border-foreground/70")}
+          className={cn("storefront-elevate mt-auto w-full", editorial && "mt-3 border-foreground/70")}
           size="sm"
           variant={editorial ? "outline" : "default"}
           disabled={product.stock <= 0}
@@ -101,6 +104,6 @@ export function ProductCard({
           {product.stock <= 0 ? "Out of stock" : "Add to Cart"}
         </Button>
       </div>
-    </article>
+    </motion.article>
   );
 }
