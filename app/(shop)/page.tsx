@@ -1,4 +1,5 @@
-import Image from "next/image";
+import { CollectionImage, CollectionLayer, CollectionMedallion, HeroFoliage, ScrollScene } from "@/components/motion/scroll-scene";
+import { TiltRow } from "@/components/motion/tilt-row";
 import Link from "next/link";
 import { listProducts } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
@@ -16,14 +17,14 @@ export default async function HomePage() {
 
   return (
     <>
-      <section className="relative isolate min-h-[78vh] overflow-hidden bg-cream md:min-h-[90vh]">
-        <Image
+      <ScrollScene kind="hero" className="storefront-hero relative isolate min-h-[78vh] overflow-hidden bg-cream md:min-h-[90vh]">
+        <HeroFoliage
           src="/hero/green-leaves.jpg"
           alt=""
           fill
           priority
           sizes="100vw"
-          className="pointer-events-none object-cover object-center opacity-40 animate-slow-zoom"
+          className="pointer-events-none object-cover object-center opacity-40"
           aria-hidden
         />
         <div className="absolute inset-0 bg-gradient-to-b from-cream/70 via-cream/50 to-cream" />
@@ -41,14 +42,14 @@ export default async function HomePage() {
                 asChild
                 variant="outline"
                 size="lg"
-                className="mt-5 rounded-full border-sage/70 bg-cream/60 px-9 tracking-widest transition-transform hover:scale-[1.03] hover:bg-cream"
+                className="storefront-elevate mt-5 rounded-full border-sage/70 bg-cream/60 px-9 tracking-widest transition-transform hover:scale-[1.03] hover:bg-cream"
               >
                 <Link href="/products">Shop Now</Link>
               </Button>
             </div>
           </HeroOrb>
         </div>
-      </section>
+      </ScrollScene>
 
       <section className="border-b border-border/40 bg-cream">
         <div className="mx-auto max-w-store px-4 py-3.5 md:px-6">
@@ -87,7 +88,7 @@ export default async function HomePage() {
               </h2>
               <Stagger className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2" delay={0.1}>
                 {bestsellers.map((p) => (
-                  <StaggerItem key={p.id}>
+                  <StaggerItem key={p.id} depth>
                     <ProductCard product={p} variant="editorial" />
                   </StaggerItem>
                 ))}
@@ -101,8 +102,8 @@ export default async function HomePage() {
                 {newest.map((p, i) => {
                   const img = parseJsonArray(p.images)[0] || "/products/placeholder.jpg";
                   return (
-                    <FadeIn key={p.id} delay={0.05 * i} y={12}>
-                      <li className="flex gap-4 border-b border-border/50 pb-6 transition-colors hover:border-sage/40">
+                    <FadeIn key={p.id} delay={0.05 * i} y={12} depth>
+                      <TiltRow className="flex gap-4 border-b border-border/50 pb-6 transition-colors hover:border-sage/40">
                         <Link
                           href={`/products/${p.slug}`}
                           className="relative h-20 w-20 shrink-0 overflow-hidden bg-surface-container transition-transform hover:scale-[1.03]"
@@ -124,12 +125,12 @@ export default async function HomePage() {
                           <p className="text-sm text-muted">{formatINR(p.sellingPrice)}</p>
                           <Link
                             href={`/products/${p.slug}`}
-                            className="mt-1 text-xs uppercase tracking-widest underline underline-offset-4"
+                            className="storefront-elevate mt-1 text-xs uppercase tracking-widest underline underline-offset-4"
                           >
                             Add to Cart
                           </Link>
                         </div>
-                      </li>
+                      </TiltRow>
                     </FadeIn>
                   );
                 })}
@@ -139,7 +140,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-sage py-16 text-white">
+      <ScrollScene kind="collections" className="relative bg-sage py-16 text-white">
         <div className="mx-auto max-w-store px-4 md:px-6">
           <FadeIn>
             <h2 className="font-display text-center text-3xl font-medium tracking-[0.12em] md:text-4xl">
@@ -151,11 +152,12 @@ export default async function HomePage() {
               { label: "Hair Care", href: "/products?category=Hair+Serum", image: "/hero/green-leaves.jpg" },
               { label: "Face Essentials", href: "/products?category=Face+Essential", image: "/collections/pink-flower.jpg" },
               { label: "Fragrance", href: "/products?category=Perfume", image: "/collections/flower-buds.jpg" },
-            ].map((c) => (
-              <StaggerItem key={c.label}>
+            ].map((c, i) => (
+              <CollectionLayer key={c.label} index={i}>
                 <Link href={c.href} className="group flex flex-col items-center gap-4">
-                  <div className="relative aspect-square w-44 overflow-hidden rounded-full ring-2 ring-white/30 transition duration-500 group-hover:scale-105 group-hover:ring-white/60 md:w-52">
-                    <Image
+                  <CollectionMedallion index={i} className="relative aspect-square w-44 overflow-hidden rounded-full ring-2 ring-white/30 transition duration-500 group-hover:scale-105 group-hover:ring-white/60 md:w-52">
+                    <CollectionImage
+                      index={i}
                       src={c.image}
                       alt={c.label}
                       fill
@@ -163,16 +165,16 @@ export default async function HomePage() {
                       quality={75}
                       className="object-cover transition duration-700 group-hover:scale-110"
                     />
-                  </div>
+                  </CollectionMedallion>
                   <span className="font-display text-xl tracking-wide transition-transform group-hover:translate-y-0.5">
                     {c.label}
                   </span>
                 </Link>
-              </StaggerItem>
+              </CollectionLayer>
             ))}
           </Stagger>
         </div>
-      </section>
+      </ScrollScene>
     </>
   );
 }

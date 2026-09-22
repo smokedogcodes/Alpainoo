@@ -87,7 +87,7 @@ export function AddToCartButton({
 
       <Button
         size="lg"
-        className="hidden w-full lg:inline-flex"
+        className="storefront-elevate hidden w-full lg:inline-flex"
         disabled={stock <= 0}
         onClick={add}
       >

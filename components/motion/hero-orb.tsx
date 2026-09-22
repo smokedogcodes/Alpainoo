@@ -1,19 +1,19 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useTransform } from "framer-motion";
+import { useSceneProgress } from "@/components/motion/scroll-scene";
 
 export function HeroOrb({ children }: { children: React.ReactNode }) {
-  const reduce = useReducedMotion();
-
-  if (reduce) {
-    return <>{children}</>;
-  }
+  const { progress, enabled } = useSceneProgress();
+  const rotateX = useTransform(progress, [0, 1], [0, 9]);
+  const scale = useTransform(progress, [0, 1], [1, 0.94]);
+  const z = useTransform(progress, [0, 1], [0, -80]);
+  const y = useTransform(progress, [0, 1], [0, 50]);
 
   return (
     <motion.div
-      initial={{ opacity: 0.85, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="hero-depth-orb"
+      style={enabled ? { rotateX, scale, z, y, transformPerspective: 1200, transformStyle: "preserve-3d" } : undefined}
     >
       {children}
     </motion.div>
