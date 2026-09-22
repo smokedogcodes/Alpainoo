@@ -27,7 +27,7 @@
   // "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "alpainoo-uploads" }],
   "vars": {
     "AUTH_TRUST_HOST": "true",
-    "AUTH_URL": "https://alpainoo.smokedog.workers.dev",
-    "NEXT_PUBLIC_APP_URL": "https://alpainoo.smokedog.workers.dev"
+    "AUTH_URL": "https://alpainoo.smokedogcodes.workers.dev",
+    "NEXT_PUBLIC_APP_URL": "https://alpainoo.smokedogcodes.workers.dev"
   }
 }
