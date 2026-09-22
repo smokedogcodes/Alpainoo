@@ -68,10 +68,10 @@ try {
     CF_DEPLOY: "1",
     DATABASE_URL: "file:./prisma/cf-build-placeholder.db",
     AUTH_SECRET: process.env.AUTH_SECRET || "cf-build-placeholder-rotate-me",
-    AUTH_URL: process.env.AUTH_URL || "https://alpainoo.alpainoocompany.workers.dev",
+    AUTH_URL: process.env.AUTH_URL || "https://alpainoo.smokedog.workers.dev",
     AUTH_TRUST_HOST: "true",
     NEXT_PUBLIC_APP_URL:
-      process.env.NEXT_PUBLIC_APP_URL || "https://alpainoo.alpainoocompany.workers.dev",
+      process.env.NEXT_PUBLIC_APP_URL || "https://alpainoo.smokedog.workers.dev",
   };
 
   const placeholderDb = path.join(root, "prisma", "cf-build-placeholder.db");
